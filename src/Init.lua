@@ -2,7 +2,7 @@
 --
 -- Global values that must be present for the rest of this mod to work.
 
-if not DV then DV = {}
+if not DV then DV = {} end
 
 DV.SIM = {
    running = {
@@ -34,3 +34,5 @@ DV.SIM = {
       next_stone_id = -1
    }
 }
+
+DV.SIM.JOKERS = {}
