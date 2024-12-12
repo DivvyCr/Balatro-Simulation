@@ -5,6 +5,8 @@
 if not DV then DV = {} end
 
 DV.SIM = {
+   JOKERS = {},
+   
    running = {
       --- Table to store workings (ie. running totals):
       min   = {chips = 0, mult = 0, dollars = 0},
@@ -34,5 +36,3 @@ DV.SIM = {
       next_stone_id = -1
    }
 }
-
-DV.SIM.JOKERS = {}
