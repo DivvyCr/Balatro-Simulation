@@ -24,14 +24,14 @@ sources = [ "Init.lua" ]
 target = "functions/common_events.lua"
 position = "append"
 sources = [
-  "Engine.lua",
-  "Utils.lua"
+  "Engine.lua"
 ]
+
 
 [[patches]]
 [patches.copy]
-target = "card.lua"
+target = "functions/misc_functions.lua"
 position = "append"
 sources = [
-  "Jokers/_Vanilla.lua"
+  "Mute.lua"
 ]

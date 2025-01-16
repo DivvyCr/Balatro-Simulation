@@ -2,419 +2,249 @@
 --
 -- The heart of this library: it replicates the game's score evaluation.
 
+
+
+
 function DV.SIM.run()
-   local null_ret = {score = {min=0, exact=0, max=0}, dollars = {min=0, exact=0, max=0}}
+   local null_ret = { score = { min = 0, exact = 0, max = 0 }, dollars = { min = 0, exact = 0, max = 0 } }
    if #G.hand.highlighted < 1 then return null_ret end
 
-   DV.SIM.init()
-
-   DV.SIM.manage_state("SAVE")
-   DV.SIM.update_state_variables()
-
-   if not DV.SIM.simulate_blind_debuffs() then
-      DV.SIM.simulate_joker_before_effects()
-      DV.SIM.add_base_chips_and_mult()
-      DV.SIM.simulate_blind_effects()
-      DV.SIM.simulate_scoring_cards()
-      DV.SIM.simulate_held_cards()
-      DV.SIM.simulate_joker_global_effects()
-      DV.SIM.simulate_consumable_effects()
-      DV.SIM.simulate_deck_effects()
-   else -- Only Matador at this point:
-      DV.SIM.simulate_all_jokers(G.jokers, {debuffed_hand = true})
-   end
-
-   DV.SIM.manage_state("RESTORE")
-
-   return DV.SIM.get_results()
-end
-
-function DV.SIM.init()
-   -- Reset:
    DV.SIM.running = {
-      min   = {chips = 0, mult = 0, dollars = 0},
-      exact = {chips = 0, mult = 0, dollars = 0},
-      max   = {chips = 0, mult = 0, dollars = 0},
-      reps = 0
+      min   = { chips = 0, mult = 0, dollars = 0 },
+      exact = { chips = 0, mult = 0, dollars = 0 },
+      max   = { chips = 0, mult = 0, dollars = 0 },
+      reps  = 0
    }
 
-   -- Fetch metadata about simulated play:
-   local hand_name, _, poker_hands, scoring_hand, _ = G.FUNCS.get_poker_hand_info(G.hand.highlighted)
-   DV.SIM.env.scoring_name = hand_name
+   --print("FREEZING")
+   DV.SIM.frozen = true
+   partial_freeze()
+   --print("FROZEN")
 
-   -- Identify played cards and extract necessary data:
-   DV.SIM.env.played_cards = {}
-   DV.SIM.env.scoring_cards = {}
-   local is_splash_joker = next(find_joker("Splash"))
-   table.sort(G.hand.highlighted, function(a, b) return a.T.x < b.T.x end) -- Sorts by positional x-value to mirror card order!
-   for _, card in ipairs(G.hand.highlighted) do
-      local is_scoring = false
-      for _, scoring_card in ipairs(scoring_hand) do
-       -- Either card is scoring because it's part of the scoring hand,
-       -- or there is Splash joker, or it's a Stone Card:
-         if card.sort_id == scoring_card.sort_id
-            or is_splash_joker
-            or card.ability.effect == "Stone Card"
-         then
-            is_scoring = true
-            break
-         end
-      end
+   if G.SETTINGS.DV.show_min_max then
+      prepare_GAME()
+      --print("Attempting max value")
+      DV.SIM.running.max = test_hand(0)
 
-      local card_data = DV.SIM.get_card_data(card)
-      table.insert(DV.SIM.env.played_cards, card_data)
-      if is_scoring then table.insert(DV.SIM.env.scoring_cards, card_data) end
+      prepare_GAME()
+      --print("Attempting min value")
+      DV.SIM.running.min = test_hand(1)
+   else
+      prepare_GAME()
+      --print("Attempting exact value")
+      DV.SIM.running.exact = test_hand(0.5)
    end
+   --print("THAWING")
+   partial_unfreeze()
+   DV.SIM.frozen = false
+   --print("THAWED")
 
-   -- Identify held cards and extract necessary data:
-   DV.SIM.env.held_cards = {}
-   for _, card in ipairs(G.hand.cards) do
-      -- Highlighted cards are simulated as played cards:
-      if not card.highlighted then
-         local card_data = DV.SIM.get_card_data(card)
-         table.insert(DV.SIM.env.held_cards, card_data)
-      end
-   end
 
-   -- Extract necessary joker data:
-   DV.SIM.env.jokers = {}
-   for _, joker in ipairs(G.jokers.cards) do
-      local joker_data = {
-         -- P_CENTER keys for jokers have the form j_NAME, get rid of j_
-         id = joker.config.center.key:sub(3, #joker.config.center.key),
-         ability = copy_table(joker.ability),
-         edition = copy_table(joker.edition),
-         rarity = joker.config.center.rarity,
-         debuff = joker.debuff
-      }
-      table.insert(DV.SIM.env.jokers, joker_data)
-   end
-
-   -- Extract necessary consumable data:
-   DV.SIM.env.consumables = {}
-   for _, consumable in ipairs(G.consumeables.cards) do
-      local consumable_data = {
-         -- P_CENTER keys have the form x_NAME, get rid of x_
-         id = consumable.config.center.key:sub(3, #consumable.config.center.key),
-         ability = copy_table(consumable.ability)
-      }
-      table.insert(DV.SIM.env.consumables, consumable_data)
-   end
-
-   -- Set extensible context template:
-   DV.SIM.get_context = function(cardarea, args)
-      local context = {
-         cardarea = cardarea,
-         full_hand = DV.SIM.env.played_cards,
-         scoring_name = hand_name,
-         scoring_hand = DV.SIM.env.scoring_cards,
-         poker_hands = poker_hands
-      }
-
-      for k, v in pairs(args) do
-         context[k] = v
-      end
-
-      return context
-   end
-end
-
-function DV.SIM.get_card_data(card_obj)
-   return {
-      rank = card_obj.base.id,
-      suit = card_obj.base.suit,
-      base_chips = card_obj.base.nominal,
-      ability = copy_table(card_obj.ability),
-      edition = copy_table(card_obj.edition),
-      seal = card_obj.seal,
-      debuff = card_obj.debuff,
-      lucky_trigger = {}
-   }
-end
-
-function DV.SIM.get_results()
-   local DVSR = DV.SIM.running
-
-   local min_score   = math.floor(DVSR.min.chips   * DVSR.min.mult)
-   local exact_score = math.floor(DVSR.exact.chips * DVSR.exact.mult)
-   local max_score   = math.floor(DVSR.max.chips   * DVSR.max.mult)
+   local min_score   = math.floor(DV.SIM.running.min.chips * DV.SIM.running.min.mult)
+   local exact_score = math.floor(DV.SIM.running.exact.chips * DV.SIM.running.exact.mult)
+   local max_score   = math.floor(DV.SIM.running.max.chips * DV.SIM.running.max.mult)
 
    return {
-      score   = {min = min_score,        exact = exact_score,        max = max_score},
-      dollars = {min = DVSR.min.dollars, exact = DVSR.exact.dollars, max = DVSR.max.dollars}
+      score   = { min = min_score, exact = exact_score, max = max_score },
+      dollars = { min = DV.SIM.running.min.dollars, exact = DV.SIM.running.exact.dollars, max = DV.SIM.running.max.dollars }
    }
 end
 
---
--- GAME STATE MANAGEMENT:
---
+function prepare_GAME()
+   --print("RESETTING")
+   DV.SIM.DEBUG.check_for_real_fakes = true
+   reset_pseudo_tables()
+   DV.SIM.DEBUG.check_for_real_fakes = false
 
-function DV.SIM.manage_state(save_or_restore)
-   local DVSO = DV.SIM.orig
-
-   if save_or_restore == "SAVE" then
-      DVSO.random_data = copy_table(G.GAME.pseudorandom)
-      DVSO.hand_data = copy_table(G.GAME.hands)
-      return
+   local highlighted_cards = {}
+   for i = 1, #G.hand.highlighted do
+      highlighted_cards[i] = G.hand.highlighted[i]
+      highlighted_cards[i].T.x = nil
    end
 
-   if save_or_restore == "RESTORE" then
-      G.GAME.pseudorandom = DVSO.random_data
-      G.GAME.hands = DVSO.hand_data
-      return
+   table.sort(highlighted_cards, function(a, b) return a.T.x < b.T.x end)
+
+
+   print("HIGHLIGHT DATA")
+   for i = 1, #highlighted_cards do
+      local card = highlighted_cards[i]
+      print("Highlight #" .. i .. " = " .. card.base.name .." / card.T.x = " .. card.T.x)
+      card.base.times_played = card.base.times_played + 1
+      card.ability.played_this_ante = true
+      G.GAME.round_scores.cards_played.amt = G.GAME.round_scores.cards_played.amt + 1
+      G.hand:remove_card(card)
+      G.play:emplace(card)
    end
-end
 
-function DV.SIM.update_state_variables()
-   -- Increment poker hand played this run/round:
-   local hand_info = G.GAME.hands[DV.SIM.env.scoring_name]
-   hand_info.played = hand_info.played + 1
-   hand_info.played_this_round = hand_info.played_this_round + 1
-end
-
---
--- MACRO LEVEL:
---
-
-function DV.SIM.simulate_scoring_cards()
-   for _, scoring_card in ipairs(DV.SIM.env.scoring_cards) do
-      DV.SIM.simulate_card_in_context(scoring_card, G.play)
+   -- reset card positions for correct order
+   for i,card in pairs(G.play.cards) do
+      card.T.x = nil
    end
-end
+   table.sort(G.play.cards, function(a, b) return a.T.x < b.T.x end)
 
-function DV.SIM.simulate_held_cards()
-   for _, held_card in ipairs(DV.SIM.env.held_cards) do
-      DV.SIM.simulate_card_in_context(held_card, G.hand)
+   print("HAND DATA")
+   for i,card in pairs(G.play.cards) do
+      print("Fake PLAY #" .. i .. " = " .. card.base.name .." / card.T.x = " .. card.T.x)
    end
+
 end
 
-function DV.SIM.simulate_joker_global_effects()
-   for _, joker in ipairs(DV.SIM.env.jokers) do
-      if joker.edition then -- Foil and Holo:
-         if joker.edition.chips then DV.SIM.add_chips(joker.edition.chips) end
-         if joker.edition.mult  then DV.SIM.add_mult(joker.edition.mult) end
+function test_hand(rng_val)
+   DV.SIM.random = rng_val
+   G.FUNCS.evaluate_play()
+
+   local cash = DV.SIM.frozen_tables.GAME.dollars - G.GAME.dollars + (G.GAME.dollar_buffer or 0)
+
+   --print("CALCULATED HAND - " .. hand_chips .. "x" .. mult .. " +" .. cash)
+
+   DV.SIM.hands_calculated = DV.SIM.hands_calculated + 1
+   return { chips = hand_chips, mult = mult, dollars = cash }
+end
+
+function partial_freeze()
+   -- initial creation
+   for k, _ in pairs(DV.SIM.frozen_tables) do
+      DV.SIM.frozen_tables[k] = G[k]
+      DV.SIM.pseudo_tables[k] = init_pseudo_table(DV.SIM.frozen_tables[k], k)
+      G[k] = DV.SIM.pseudo_tables[k]
+   end
+
+   DV.SIM.G_tables.real = G
+   if DV.SIM.G_tables.fake then
+      -- clear it
+      for k, _ in pairs(DV.SIM.G_tables.fake) do
+         DV.SIM.G_tables.fake[k] = nil
       end
-
-      DV.SIM.simulate_joker(joker, DV.SIM.get_context(G.jokers, {global = true}))
-
-      -- Joker-on-joker effects (eg. Blueprint):
-      DV.SIM.simulate_all_jokers(G.jokers, {other_joker = joker})
-
-      if joker.edition then -- Poly:
-         if joker.edition.x_mult then DV.SIM.x_mult(joker.edition.x_mult) end
-      end
-   end
-end
-
-function DV.SIM.simulate_consumable_effects()
-   for _, consumable in ipairs(DV.SIM.env.consumables) do
-      if consumable.ability.set == "Planet" and not consumable.debuff then
-         if G.GAME.used_vouchers.v_observatory and consumable.ability.consumeable.hand_type == DV.SIM.env.scoring_name then
-            DV.SIM.x_mult(G.P_CENTERS.v_observatory.config.extra)
-         end
-      end
-   end
-end
-
-function DV.SIM.add_base_chips_and_mult()
-   local played_hand_data = G.GAME.hands[DV.SIM.env.scoring_name]
-   DV.SIM.add_chips(played_hand_data.chips)
-   DV.SIM.add_mult(played_hand_data.mult)
-end
-
-function DV.SIM.simulate_joker_before_effects()
-   for _, joker in ipairs(DV.SIM.env.jokers) do
-      DV.SIM.simulate_joker(joker, DV.SIM.get_context(G.jokers, {before = true}))
-   end
-end
-
-function DV.SIM.simulate_blind_effects()
-   if G.GAME.blind.disabled then return end
-
-   if G.GAME.blind.name == "The Flint" then
-      local function flint(data)
-         local half_chips = math.floor(data.chips/2 + 0.5)
-         local half_mult = math.floor(data.mult/2 + 0.5)
-         data.chips = mod_chips(math.max(half_chips, 0))
-         data.mult  = mod_mult(math.max(half_mult, 1))
-      end
-
-      flint(DV.SIM.running.min)
-      flint(DV.SIM.running.exact)
-      flint(DV.SIM.running.max)
    else
-      -- Other blinds do not impact scoring; refer to Blind:modify_hand(..)
+      DV.SIM.G_tables.fake = create_pseudo_table(G,"G")
+      DV.SIM.cached_connections[G] = nil
+   end
+
+   for k, v in pairs(DV.SIM.pseudo_tables) do
+      DV.SIM.G_tables.fake[k] = v
+   end
+   G = DV.SIM.G_tables.fake
+end
+
+function partial_unfreeze()
+   G = DV.SIM.G_tables.real
+   for k, _ in pairs(DV.SIM.frozen_tables) do
+      G[k] = DV.SIM.frozen_tables[k]
    end
 end
 
-function DV.SIM.simulate_deck_effects()
-   if G.GAME.selected_back.name == 'Plasma Deck' then
-      local function plasma(data)
-         local sum = data.chips + data.mult
-         local half_sum = math.floor(sum/2)
-         data.chips = mod_chips(half_sum)
-         data.mult = mod_mult(half_sum)
+function reset_pseudo_tables()
+   local to_create = {}
+   for tbl, pt in pairs(DV.SIM.cached_connections) do
+      local mt = getmetatable(pt)
+      if rawget(mt, "is_pseudo_table") == nil then
+         print("TABLE IN cached_connections IS NOT PSEUDO TABLE - " .. rawget(mt, "debug_orig"))
       end
 
-      plasma(DV.SIM.running.min)
-      plasma(DV.SIM.running.exact)
-      plasma(DV.SIM.running.max)
-   else
-      -- Other decks do not impact scoring; refer to Back:trigger_effect(..)
-   end
-end
 
-function DV.SIM.simulate_blind_debuffs()
-   local blind_obj = G.GAME.blind
-   if blind_obj.disabled then return false end
-
-   -- The following are part of Blind:press_play()
-
-   if blind_obj.name == "The Hook" then
-      blind_obj.triggered = true
-      for _ = 1, math.min(2, #DV.SIM.env.held_cards) do
-         -- TODO: Identify cards-in-hand that can affect score, simulate with/without them for min/max
-         local selected_card, card_key = pseudorandom_element(DV.SIM.env.held_cards, pseudoseed('hook'))
-         table.remove(DV.SIM.env.held_cards, card_key)
-         for _, joker in ipairs(DV.SIM.env.jokers) do
-            -- Note that the cardarea argument is largely arbitrary (used for DV.SIM.JOKERS),
-            -- I use G.hand because The Hook discards from the hand
-            DV.SIM.simulate_joker(joker, DV.SIM.get_context(G.hand, {discard = true, other_card = selected_card}))
+      for k, _ in pairs(pt) do
+         rawset(pt, k, nil)
+      end
+      for k, v in pairs(tbl) do
+         if type(v) == "table" and DV.SIM.ignore_values[k] == nil then
+            rawset(pt, k, DV.SIM.cached_connections[v])
+            if rawget(pt, k) == nil then
+               --print("NEED TO CREATE NEW VALUE FOR " .. rawget(mt, "debug_orig") .. "." .. k)
+               local temp = {}
+               temp.tab = tbl
+               temp.pseudo = pt
+               temp.key = k
+               table.insert(to_create, temp)
+            end
          end
       end
    end
-
-   if blind_obj.name == "The Tooth" then
-      blind_obj.triggered = true
-      DV.SIM.add_dollars((-1) * #DV.SIM.env.played_cards)
-   end
-
-   -- The following are part of Blind:debuff_hand(..)
-
-   if blind_obj.name == "The Arm" then
-      blind_obj.triggered = false
-
-      local played_hand_name = DV.SIM.env.scoring_name
-      if G.GAME.hands[played_hand_name].level > 1 then
-         blind_obj.triggered = true
-         -- NOTE: Important to save/restore G.GAME.hands here
-         -- NOTE: Implementation mirrors level_up_hand(..)
-         local played_hand_data = G.GAME.hands[played_hand_name]
-         played_hand_data.level = math.max(1, played_hand_data.level - 1)
-         played_hand_data.mult  = math.max(1, played_hand_data.s_mult  + (played_hand_data.level-1) * played_hand_data.l_mult)
-         played_hand_data.chips = math.max(0, played_hand_data.s_chips + (played_hand_data.level-1) * played_hand_data.l_chips)
-      end
-      return false -- IMPORTANT: Avoid duplicate effects from Blind:debuff_hand() below
-   end
-
-   if blind_obj.name == "The Ox" then
-      blind_obj.triggered = false
-
-      if DV.SIM.env.scoring_name == G.GAME.current_round.most_played_poker_hand then
-         blind_obj.triggered = true
-         DV.SIM.add_dollars(-G.GAME.dollars)
-      end
-      return false -- IMPORTANT: Avoid duplicate effects from Blind:debuff_hand() below
-   end
-
-   return blind_obj:debuff_hand(DV.SIM.env.played_cards, DV.SIM.env.poker_hands, DV.SIM.env.scoring_name, true)
-end
-
---
--- MICRO LEVEL (CARDS):
---
-
-function DV.SIM.simulate_card_in_context(card, cardarea)
-   -- Reset and collect repetitions:
-   DV.SIM.running.reps = 1
-   if card.seal == "Red" then DV.SIM.add_reps(1) end
-   DV.SIM.simulate_all_jokers(cardarea, {other_card = card, repetition = true})
-
-   -- Apply effects:
-   for _ = 1, DV.SIM.running.reps do
-      DV.SIM.simulate_card(card, DV.SIM.get_context(cardarea, {}))
-      DV.SIM.simulate_all_jokers(cardarea, {other_card = card, individual = true})
+   for _, v in pairs(to_create) do
+      local tbl = v.tab
+      local pt = v.pseudo
+      local k = v.key
+      --print("CREATING NEW VALUE - " .. k)
+      rawset(pt, k, init_pseudo_table(tbl[k], "???." .. k))
    end
 end
 
-function DV.SIM.simulate_card(card_data, context)
-   -- Do nothing if debuffed:
-   if card_data.debuff then return end
+function init_pseudo_table(tbl, debug)
+   debug = debug or ""
 
-   if context.cardarea == G.play then
-      -- Chips:
-      if card_data.ability.effect == "Stone Card" then
-         DV.SIM.add_chips(card_data.ability.bonus + (card_data.ability.perma_bonus or 0))
+   if DV.SIM.cached_connections[tbl] then
+      return DV.SIM.cached_connections[tbl]
+   end
+
+   local pt = create_pseudo_table(tbl, debug)
+   for k, v in pairs(tbl) do
+      if type(v) == "table" and DV.SIM.ignore_values[k] == nil then
+         pt[k] = init_pseudo_table(v, debug .. "." .. k)
+      end
+   end
+
+   return pt
+end
+
+function insert_value_into_PT(self, key, value)
+   -- convert tables to PT, if not already
+end
+
+function get_value_from_RT(self, key)
+   -- only return PT tables
+end
+
+function create_pseudo_table(tbl, debug)
+   local pt = DV.SIM.cached_connections[tbl]
+   if pt == nil then
+      pt = {}
+
+      local pt_mt = {}
+      pt_mt.is_pseudo_table = true
+      pt_mt.debug_orig = debug
+      pt_mt.__index = tbl
+      setmetatable(pt, pt_mt)
+
+      DV.SIM.cached_connections[tbl] = pt
+   end
+   return pt
+end
+
+-- debug print
+
+function TablePrint(t, depth, tabs)
+   depth = depth or 3
+   tabs = tabs or ''
+   if depth == 0 then return end
+   for k, v in pairs(t) do
+      if type(v) == "table" then
+         print(tabs, k, ' = ', type(v))
+         TablePrint(v, depth - 1, tabs .. '\t')
       else
-         DV.SIM.add_chips(card_data.base_chips + card_data.ability.bonus + (card_data.ability.perma_bonus or 0))
-      end
-
-      -- Mult:
-      if card_data.ability.effect == "Lucky Card" then
-         local exact_mult, min_mult, max_mult = DV.SIM.get_probabilistic_extremes(pseudorandom("lucky_mult"), 5, card_data.ability.mult, 0)
-         DV.SIM.add_mult(exact_mult, min_mult, max_mult)
-         -- Careful not to overwrite `card_data.lucky_trigger` outright:
-         if exact_mult > 0 then card_data.lucky_trigger.exact = true end
-         if min_mult > 0 then card_data.lucky_trigger.min = true end
-         if max_mult > 0 then card_data.lucky_trigger.max = true end
-      else
-         DV.SIM.add_mult(card_data.ability.mult)
-      end
-
-      -- XMult:
-      if card_data.ability.x_mult > 1 then
-         DV.SIM.x_mult(card_data.ability.x_mult)
-      end
-
-      -- Dollars:
-      if card_data.seal == "Gold" then
-         DV.SIM.add_dollars(3)
-      end
-      if card_data.ability.p_dollars > 0 then
-         if card_data.ability.effect == "Lucky Card" then
-            local exact_dollars, min_dollars, max_dollars = DV.SIM.get_probabilistic_extremes(pseudorandom("lucky_money"), 15, card_data.ability.p_dollars, 0)
-            DV.SIM.add_dollars(exact_dollars, min_dollars, max_dollars)
-            -- Careful not to overwrite `card_data.lucky_trigger` outright:
-            if exact_dollars > 0 then card_data.lucky_trigger.exact = true end
-            if min_dollars > 0 then card_data.lucky_trigger.min = true end
-            if max_dollars > 0 then card_data.lucky_trigger.max = true end
-         else
-            DV.SIM.add_dollars(card_data.ability.p_dollars)
-         end
-      end
-
-     -- Edition:
-      if card_data.edition then
-         if card_data.edition.chips then DV.SIM.add_chips(card_data.edition.chips) end
-         if card_data.edition.mult then DV.SIM.add_mult(card_data.edition.mult) end
-         if card_data.edition.x_mult then DV.SIM.x_mult(card_data.edition.x_mult) end
-      end
-
-   elseif context.cardarea == G.hand then
-      if card_data.ability.h_mult > 0 then
-         DV.SIM.add_mult(card_data.ability.h_mult)
-      end
-
-      if card_data.ability.h_x_mult > 0 then
-         DV.SIM.x_mult(card_data.ability.h_x_mult)
+         print(tabs, k, ': ', t[k])
       end
    end
 end
 
---
--- MICRO LEVEL (JOKERS):
---
+-- common_events.lua Hooks
 
-function DV.SIM.simulate_all_jokers(cardarea, context_args)
-   for _, joker in ipairs(DV.SIM.env.jokers) do
-      DV.SIM.simulate_joker(joker, DV.SIM.get_context(cardarea, context_args))
+local orig_check_for_unlock = check_for_unlock
+function check_for_unlock(args)
+   if not DV.SIM.frozen then
+      return orig_check_for_unlock(args)
    end
 end
 
-function DV.SIM.simulate_joker(joker_obj, context)
-   -- Do nothing if debuffed:
-   if joker_obj.debuff then return end
+local orig_update_hand_text = update_hand_text
+function update_hand_text(config, vals)
+   if not DV.SIM.frozen then
+      return orig_update_hand_text(config, vals)
+   end
+end
 
-   local joker_simulation_function = DV.SIM.JOKERS["simulate_" .. joker_obj.id]
-   if joker_simulation_function then joker_simulation_function(joker_obj, context) end
+-- event.lua Hook
+local orig_add_event = EventManager.add_event
+function EventManager:add_event(event, queue, front)
+   if not DV.SIM.frozen then
+      return orig_add_event(self, event, queue, front)
+   end
 end
