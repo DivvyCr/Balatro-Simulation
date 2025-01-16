@@ -65,10 +65,10 @@ function prepare_GAME()
    table.sort(highlighted_cards, function(a, b) return a.T.x < b.T.x end)
 
 
-   print("HIGHLIGHT DATA")
+   --print("HIGHLIGHT DATA")
    for i = 1, #highlighted_cards do
       local card = highlighted_cards[i]
-      print("Highlight #" .. i .. " = " .. card.base.name .." / card.T.x = " .. card.T.x)
+      --print("Highlight #" .. i .. " = " .. card.base.name .." / card.T.x = " .. card.T.x)
       card.base.times_played = card.base.times_played + 1
       card.ability.played_this_ante = true
       G.GAME.round_scores.cards_played.amt = G.GAME.round_scores.cards_played.amt + 1
@@ -77,16 +77,17 @@ function prepare_GAME()
    end
 
    -- reset card positions for correct order
-   for i,card in pairs(G.play.cards) do
+   for i, card in pairs(G.play.cards) do
       card.T.x = nil
    end
    table.sort(G.play.cards, function(a, b) return a.T.x < b.T.x end)
 
+   --[[
    print("HAND DATA")
    for i,card in pairs(G.play.cards) do
       print("Fake PLAY #" .. i .. " = " .. card.base.name .." / card.T.x = " .. card.T.x)
    end
-
+   --]]
 end
 
 function test_hand(rng_val)
@@ -116,7 +117,7 @@ function partial_freeze()
          DV.SIM.G_tables.fake[k] = nil
       end
    else
-      DV.SIM.G_tables.fake = create_pseudo_table(G,"G")
+      DV.SIM.G_tables.fake = create_pseudo_table(G, "G")
       DV.SIM.cached_connections[G] = nil
    end
 
@@ -183,14 +184,6 @@ function init_pseudo_table(tbl, debug)
    end
 
    return pt
-end
-
-function insert_value_into_PT(self, key, value)
-   -- convert tables to PT, if not already
-end
-
-function get_value_from_RT(self, key)
-   -- only return PT tables
 end
 
 function create_pseudo_table(tbl, debug)
