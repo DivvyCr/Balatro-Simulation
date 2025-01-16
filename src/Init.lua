@@ -5,47 +5,32 @@
 if not DV then DV = {} end
 
 DV.SIM = {
-   JOKERS = {},
+   running = false,
 
-   running = {
-      --- Table to store workings (ie. running totals):
-      min   = { chips = 0, mult = 0, dollars = 0 },
-      exact = { chips = 0, mult = 0, dollars = 0 },
-      max   = { chips = 0, mult = 0, dollars = 0 },
-      reps  = 0,
+   TYPES = {
+      MIN   = -1,
+      EXACT = 0,
+      MAX   = 1,
+   },
+   running_type = 0,
+
+   --
+   -- TODO: Not the biggest fan of this table structure but it works for now...
+   --
+
+   -- MAIN_TABLES = {"GAME", "play", "hand", "jokers", "consumeables", "deck"},
+   IGNORED_KEYS = {role = true, children = true, parent = true, alignment = true},
+
+   real = {
+      global = nil, -- Real global `G` table
+      main = {GAME={}, play={}, hand={}, jokers={}, consumeables={}, deck={}},   -- Real game tables (from MAIN_TABLES)
    },
 
-   env = {
-      --- Table to store data about the simulated play:
-      jokers = {},        -- Derived from G.jokers.cards
-      played_cards = {},  -- Derived from G.hand.highlighted
-      scoring_cards = {}, -- Derived according to evaluate_play()
-      held_cards = {},    -- Derived from G.hand minus G.hand.highlighted
-      consumables = {},   -- Derived from G.consumeables.cards
-      scoring_name = ""   -- Derived according to evaluate_play()
+   fake = {
+      global = nil, -- Shadow global `G` table
+      main = {GAME={}, play={}, hand={}, jokers={}, consumeables={}, deck={}},   -- Top-level shadow tables (from MAIN_TABLES)
+      cached = {}, -- Other shadow tables
    },
 
-   orig = {
-      --- Table to store game data that gets modified during simulation:
-      random_data = {}, -- G.GAME.pseudorandom
-      hand_data = {}    -- G.GAME.hands
-   },
-
-   misc = {
-      --- Table to store ancillary status variables:
-      next_stone_id = -1
-   },
-
-   ignore_values = { role = true, children = true, parent = true, alignment = true },
-
-   G_tables = { real = nil, fake = nil },
-   pseudo_tables = { GAME = {}, play = {}, hand = {}, jokers = {}, consumeables = {}, deck = {} },
-   frozen_tables = { GAME = {}, play = {}, hand = {}, jokers = {}, consumeables = {}, deck = {} },
-   cached_connections = {},
-
-   frozen = false,
-   hands_calculated = 0,
-   random = 0,
-
-   DEBUG = {}
+   DEBUG = {},
 }

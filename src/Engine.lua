@@ -1,60 +1,66 @@
 --- Divvy's Simulation for Balatro - Engine.lua
 --
--- The heart of this library: it replicates the game's score evaluation.
-
-
-
+-- Shadow the game's main tables to run simulations in an isolated environment.
 
 function DV.SIM.run()
-   local null_ret = { score = { min = 0, exact = 0, max = 0 }, dollars = { min = 0, exact = 0, max = 0 } }
+   local null_ret = {
+      score   = {min = 0, exact = 0, max = 0},
+      dollars = {min = 0, exact = 0, max = 0}
+   }
    if #G.hand.highlighted < 1 then return null_ret end
 
-   DV.SIM.running = {
-      min   = { chips = 0, mult = 0, dollars = 0 },
-      exact = { chips = 0, mult = 0, dollars = 0 },
-      max   = { chips = 0, mult = 0, dollars = 0 },
-      reps  = 0
-   }
+   -- Simulation:
 
-   --print("FREEZING")
-   DV.SIM.frozen = true
-   partial_freeze()
-   --print("FROZEN")
+   DV.SIM.running = true
+   DV.SIM.save_state()
+
+   local min   = {chips = 0, mult = 0, dollars = 0}
+   local exact = {chips = 0, mult = 0, dollars = 0}
+   local max   = {chips = 0, mult = 0, dollars = 0}
 
    if G.SETTINGS.DV.show_min_max then
-      prepare_GAME()
-      --print("Attempting max value")
-      DV.SIM.running.max = test_hand(0)
+      DV.SIM.running_type = DV.SIM.TYPES.MAX
+      max = DV.SIM.simulate_play()
 
-      prepare_GAME()
-      --print("Attempting min value")
-      DV.SIM.running.min = test_hand(1)
+      DV.SIM.running_type = DV.SIM.TYPES.MIN
+      min = DV.SIM.simulate_play()
    else
-      prepare_GAME()
-      --print("Attempting exact value")
-      DV.SIM.running.exact = test_hand(0.5)
+      DV.SIM.running_type = DV.SIM.TYPES.EXACT
+      exact = DV.SIM.simulate_play()
    end
-   --print("THAWING")
-   partial_unfreeze()
-   DV.SIM.frozen = false
-   --print("THAWED")
 
+   DV.SIM.restore_state()
+   DV.SIM.running = false
 
-   local min_score   = math.floor(DV.SIM.running.min.chips * DV.SIM.running.min.mult)
-   local exact_score = math.floor(DV.SIM.running.exact.chips * DV.SIM.running.exact.mult)
-   local max_score   = math.floor(DV.SIM.running.max.chips * DV.SIM.running.max.mult)
+   -- Return:
+
+   local min_score   = math.floor(min.chips   * min.mult)
+   local exact_score = math.floor(exact.chips * exact.mult)
+   local max_score   = math.floor(max.chips   * max.mult)
 
    return {
-      score   = { min = min_score, exact = exact_score, max = max_score },
-      dollars = { min = DV.SIM.running.min.dollars, exact = DV.SIM.running.exact.dollars, max = DV.SIM.running.max.dollars }
+      score   = {min = min_score,   exact = exact_score,   max = max_score},
+      dollars = {min = min.dollars, exact = exact.dollars, max = max.dollars}
    }
 end
 
-function prepare_GAME()
+function DV.SIM.simulate_play()
+   DV.SIM.prepare_play()
+
+   G.FUNCS.evaluate_play()
+
+   local cash = DV.SIM.real.main.GAME.dollars - G.GAME.dollars + (G.GAME.dollar_buffer or 0)
+
+   --print("CALCULATED HAND - " .. hand_chips .. "x" .. mult .. " ($" .. cash .. ")")
+
+   return {chips = hand_chips, mult = mult, dollars = cash}
+end
+
+
+-- The following function adjusts values as per `G.FUNCS.play_cards_from_highlighted(e)`
+function DV.SIM.prepare_play()
    --print("RESETTING")
-   DV.SIM.DEBUG.check_for_real_fakes = true
-   reset_pseudo_tables()
-   DV.SIM.DEBUG.check_for_real_fakes = false
+   DV.SIM.reset_shadow_tables()
 
    local highlighted_cards = {}
    for i = 1, #G.hand.highlighted do
@@ -90,56 +96,50 @@ function prepare_GAME()
    --]]
 end
 
-function test_hand(rng_val)
-   DV.SIM.random = rng_val
-   G.FUNCS.evaluate_play()
-
-   local cash = DV.SIM.frozen_tables.GAME.dollars - G.GAME.dollars + (G.GAME.dollar_buffer or 0)
-
-   --print("CALCULATED HAND - " .. hand_chips .. "x" .. mult .. " +" .. cash)
-
-   DV.SIM.hands_calculated = DV.SIM.hands_calculated + 1
-   return { chips = hand_chips, mult = mult, dollars = cash }
-end
-
-function partial_freeze()
-   -- initial creation
-   for k, _ in pairs(DV.SIM.frozen_tables) do
-      DV.SIM.frozen_tables[k] = G[k]
-      DV.SIM.pseudo_tables[k] = init_pseudo_table(DV.SIM.frozen_tables[k], k)
-      G[k] = DV.SIM.pseudo_tables[k]
+function DV.SIM.save_state()
+   -- Swap real global tables with simulation tables via `__index` metamethod;
+   -- see comment in `DV.SIM.write_shadow_table` for some details.
+   for k, _ in pairs(DV.SIM.real.main) do
+      DV.SIM.real.main[k] = G[k]
+      DV.SIM.fake.main[k] = DV.SIM.write_shadow_table(DV.SIM.real.main[k], k)
+      G[k] = DV.SIM.fake.main[k]
    end
 
-   DV.SIM.G_tables.real = G
-   if DV.SIM.G_tables.fake then
-      -- clear it
-      for k, _ in pairs(DV.SIM.G_tables.fake) do
-         DV.SIM.G_tables.fake[k] = nil
+   -- Save the real `G` table:
+   DV.SIM.real.global = G
+
+   if DV.SIM.fake.global then
+      -- Exists, so need to clear it:
+      for k, _ in pairs(DV.SIM.fake.global) do
+         DV.SIM.fake.global[k] = nil
       end
    else
-      DV.SIM.G_tables.fake = create_pseudo_table(G, "G")
-      DV.SIM.cached_connections[G] = nil
+      -- Does not exist, so need to create it:
+      DV.SIM.fake.global = DV.SIM.create_shadow_table(G, "G")
+      DV.SIM.fake.cached[G] = nil
    end
 
-   for k, v in pairs(DV.SIM.pseudo_tables) do
-      DV.SIM.G_tables.fake[k] = v
+   -- Populate the shadow `G` table:
+   for k, v in pairs(DV.SIM.fake.main) do
+      DV.SIM.fake.global[k] = v
    end
-   G = DV.SIM.G_tables.fake
+   -- Shadow the `G` table:
+   G = DV.SIM.fake.global
 end
 
-function partial_unfreeze()
-   G = DV.SIM.G_tables.real
-   for k, _ in pairs(DV.SIM.frozen_tables) do
-      G[k] = DV.SIM.frozen_tables[k]
+function DV.SIM.restore_state()
+   G = DV.SIM.real.global
+   for k, _ in pairs(DV.SIM.real.main) do
+      G[k] = DV.SIM.real.main[k]
    end
 end
 
-function reset_pseudo_tables()
+function DV.SIM.reset_shadow_tables()
    local to_create = {}
-   for tbl, pt in pairs(DV.SIM.cached_connections) do
+   for tbl, pt in pairs(DV.SIM.fake.cached) do
       local mt = getmetatable(pt)
-      if rawget(mt, "is_pseudo_table") == nil then
-         print("TABLE IN cached_connections IS NOT PSEUDO TABLE - " .. rawget(mt, "debug_orig"))
+      if rawget(mt, "is_shadow_table") == nil then
+         print("TABLE IN DV.SIM.fake.cached IS NOT PSEUDO TABLE - " .. rawget(mt, "debug_orig"))
       end
 
 
@@ -147,8 +147,8 @@ function reset_pseudo_tables()
          rawset(pt, k, nil)
       end
       for k, v in pairs(tbl) do
-         if type(v) == "table" and DV.SIM.ignore_values[k] == nil then
-            rawset(pt, k, DV.SIM.cached_connections[v])
+         if type(v) == "table" and not DV.SIM.IGNORED_KEYS[k] then
+            rawset(pt, k, DV.SIM.fake.cached[v])
             if rawget(pt, k) == nil then
                --print("NEED TO CREATE NEW VALUE FOR " .. rawget(mt, "debug_orig") .. "." .. k)
                local temp = {}
@@ -165,40 +165,50 @@ function reset_pseudo_tables()
       local pt = v.pseudo
       local k = v.key
       --print("CREATING NEW VALUE - " .. k)
-      rawset(pt, k, init_pseudo_table(tbl[k], "???." .. k))
+      rawset(pt, k, DV.SIM.write_shadow_table(tbl[k], "???." .. k))
    end
 end
 
-function init_pseudo_table(tbl, debug)
+function DV.SIM.write_shadow_table(tbl, debug)
    debug = debug or ""
 
-   if DV.SIM.cached_connections[tbl] then
-      return DV.SIM.cached_connections[tbl]
+   if DV.SIM.fake.cached[tbl] then
+      return DV.SIM.fake.cached[tbl]
    end
 
-   local pt = create_pseudo_table(tbl, debug)
+   -- The key idea is that the `__index` metamethod in shadow tables
+   -- allows value look-up in any underlying shadow table (fall-through);
+   --
+   -- BUT value update only affects the updated shadow table,
+   -- without affecting any underlying shadow tables (shadowing).
+   -- This should solve most possibilities for 'pointer hell'.
+
+   local pt = DV.SIM.create_shadow_table(tbl, debug)
    for k, v in pairs(tbl) do
-      if type(v) == "table" and DV.SIM.ignore_values[k] == nil then
-         pt[k] = init_pseudo_table(v, debug .. "." .. k)
+      -- Read above on why we ignore values, only writing shadow tables:
+      if type(v) == "table" and not DV.SIM.IGNORED_KEYS[k] then
+         pt[k] = DV.SIM.write_shadow_table(v, debug .. "." .. k)
       end
    end
 
    return pt
 end
 
-function create_pseudo_table(tbl, debug)
-   local pt = DV.SIM.cached_connections[tbl]
+function DV.SIM.create_shadow_table(tbl, debug)
+   local pt = DV.SIM.fake.cached[tbl]
+
    if pt == nil then
       pt = {}
 
       local pt_mt = {}
-      pt_mt.is_pseudo_table = true
-      pt_mt.debug_orig = debug
       pt_mt.__index = tbl
+      pt_mt.is_shadow_table = true
+      pt_mt.debug_orig = debug
       setmetatable(pt, pt_mt)
 
-      DV.SIM.cached_connections[tbl] = pt
+      DV.SIM.fake.cached[tbl] = pt
    end
+
    return pt
 end
 
@@ -215,29 +225,5 @@ function TablePrint(t, depth, tabs)
       else
          print(tabs, k, ': ', t[k])
       end
-   end
-end
-
--- common_events.lua Hooks
-
-local orig_check_for_unlock = check_for_unlock
-function check_for_unlock(args)
-   if not DV.SIM.frozen then
-      return orig_check_for_unlock(args)
-   end
-end
-
-local orig_update_hand_text = update_hand_text
-function update_hand_text(config, vals)
-   if not DV.SIM.frozen then
-      return orig_update_hand_text(config, vals)
-   end
-end
-
--- event.lua Hook
-local orig_add_event = EventManager.add_event
-function EventManager:add_event(event, queue, front)
-   if not DV.SIM.frozen then
-      return orig_add_event(self, event, queue, front)
    end
 end
