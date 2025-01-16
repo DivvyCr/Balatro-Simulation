@@ -6,13 +6,13 @@ if not DV then DV = {} end
 
 DV.SIM = {
    JOKERS = {},
-   
+
    running = {
       --- Table to store workings (ie. running totals):
-      min   = {chips = 0, mult = 0, dollars = 0},
-      exact = {chips = 0, mult = 0, dollars = 0},
-      max   = {chips = 0, mult = 0, dollars = 0},
-      reps = 0,
+      min   = { chips = 0, mult = 0, dollars = 0 },
+      exact = { chips = 0, mult = 0, dollars = 0 },
+      max   = { chips = 0, mult = 0, dollars = 0 },
+      reps  = 0,
    },
 
    env = {
@@ -34,5 +34,18 @@ DV.SIM = {
    misc = {
       --- Table to store ancillary status variables:
       next_stone_id = -1
-   }
+   },
+
+   ignore_values = { role = true, children = true, parent = true, alignment = true },
+
+   G_tables = { real = nil, fake = nil },
+   pseudo_tables = { GAME = {}, play = {}, hand = {}, jokers = {}, consumeables = {}, deck = {} },
+   frozen_tables = { GAME = {}, play = {}, hand = {}, jokers = {}, consumeables = {}, deck = {} },
+   cached_connections = {},
+
+   frozen = false,
+   hands_calculated = 0,
+   random = 0,
+
+   DEBUG = {}
 }
