@@ -23,15 +23,11 @@ sources = [ "Init.lua" ]
 [patches.copy]
 target = "functions/common_events.lua"
 position = "append"
-sources = [
-  "Engine.lua"
-]
+sources = [ "Engine.lua" ]
 
 
 [[patches]]
 [patches.copy]
-target = "functions/misc_functions.lua"
+target = "functions/common_events.lua"
 position = "append"
-sources = [
-  "Mute.lua"
-]
+sources = [ "Mute.lua" ]
