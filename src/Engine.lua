@@ -49,6 +49,40 @@ function DV.SIM.run()
    }
 end
 
+function DV.SIM.save_state()
+   DV.SIM.hook_functions()
+   -- Swap real global tables with simulation tables via `__index` metamethod;
+   -- see comment in `DV.SIM.write_shadow_table` for some details.
+   for k, _ in pairs(DV.SIM.real.main) do
+      DV.SIM.real.main[k] = G[k]
+      DV.SIM.shadow.main[k] = DV.SIM.write_shadow_table(DV.SIM.real.main[k], k)
+      G[k] = DV.SIM.shadow.main[k]
+   end
+
+   -- Most values in the `G` table aren't needed, so we can do a shadow copy
+   -- of just the important values and leave the rest as real references
+   -- Save the real `G` table:
+   DV.SIM.real.global = G
+
+   if DV.SIM.shadow.global then
+      -- Exists, so need to clear it:
+      for k, _ in pairs(DV.SIM.shadow.global) do
+         DV.SIM.shadow.global[k] = nil
+      end
+   else
+      -- Does not exist, so need to create it:
+      DV.SIM.shadow.global = DV.SIM.create_shadow_table(G, "G")
+      DV.SIM.shadow.links[G] = nil
+   end
+
+   -- Populate the shadow `G` table:
+   for k, v in pairs(DV.SIM.shadow.main) do
+      DV.SIM.shadow.global[k] = v
+   end
+   -- Shadow the `G` table:
+   G = DV.SIM.shadow.global
+end
+
 function DV.SIM.simulate_play()
    DV.SIM.prepare_play()
 
@@ -100,44 +134,13 @@ function DV.SIM.prepare_play()
    --]]
 end
 
-function DV.SIM.save_state()
-   -- Swap real global tables with simulation tables via `__index` metamethod;
-   -- see comment in `DV.SIM.write_shadow_table` for some details.
-   for k, _ in pairs(DV.SIM.real.main) do
-      DV.SIM.real.main[k] = G[k]
-      DV.SIM.shadow.main[k] = DV.SIM.write_shadow_table(DV.SIM.real.main[k], k)
-      G[k] = DV.SIM.shadow.main[k]
-   end
-
-   -- Most values in the `G` table aren't needed, so we can do a shadow copy
-   -- of just the important values and leave the rest as real references
-   -- Save the real `G` table:
-   DV.SIM.real.global = G
-
-   if DV.SIM.shadow.global then
-      -- Exists, so need to clear it:
-      for k, _ in pairs(DV.SIM.shadow.global) do
-         DV.SIM.shadow.global[k] = nil
-      end
-   else
-      -- Does not exist, so need to create it:
-      DV.SIM.shadow.global = DV.SIM.create_shadow_table(G, "G")
-      DV.SIM.shadow.links[G] = nil
-   end
-
-   -- Populate the shadow `G` table:
-   for k, v in pairs(DV.SIM.shadow.main) do
-      DV.SIM.shadow.global[k] = v
-   end
-   -- Shadow the `G` table:
-   G = DV.SIM.shadow.global
-end
-
 function DV.SIM.restore_state()
    G = DV.SIM.real.global
    for k, _ in pairs(DV.SIM.real.main) do
       G[k] = DV.SIM.real.main[k]
    end
+   
+   DV.SIM.unhook_functions()
 end
 
 function DV.SIM.reset_shadow_tables()
@@ -238,6 +241,28 @@ function TablePrint(t, depth, tabs)
    end
 end
 
+function DV.SIM.hook_functions()
+   pseudoseed = DV.SIM.new_pseudoseed
+   pseudorandom = DV.SIM.new_pseudorandom
+   ease_dollars = DV.SIM.new_ease_dollars
+   eval_card = DV.SIM.new_eval_card
+   check_for_unlock = DV.SIM.new_check_for_unlock
+   play_sound = DV.SIM.new_play_sound
+   update_hand_text = DV.SIM.new_update_hand_text
+   EventManager.add_event = DV.SIM.new_add_event
+end
+
+function DV.SIM.unhook_functions()
+   pseudoseed = DV.SIM._pseudoseed
+   pseudorandom = DV.SIM._pseudorandom
+   ease_dollars = DV.SIM._ease_dollars
+   eval_card = DV.SIM._eval_card
+   check_for_unlock = DV.SIM._check_for_unlock
+   play_sound = DV.SIM._play_sound
+   update_hand_text = DV.SIM._update_hand_text
+   EventManager.add_event = DV.SIM._add_event
+end
+
 -- Hook into pseudorandom() and pseudoseed() to force specific random results
 
 DV.SIM._pseudoseed = pseudoseed
@@ -247,7 +272,7 @@ DV.SIM.new_pseudoseed = function(key, predict_seed)
    end
    return key
 end
-pseudoseed = DV.SIM.new_pseudoseed
+--pseudoseed = DV.SIM.new_pseudoseed
 
 DV.SIM._pseudorandom = pseudorandom
 DV.SIM.new_pseudorandom = function(seed, min, max)
@@ -277,7 +302,7 @@ DV.SIM.new_pseudorandom = function(seed, min, max)
    end
    return ret
 end
-pseudorandom = DV.SIM.new_pseudorandom
+--pseudorandom = DV.SIM.new_pseudorandom
 
 
 -- Force ease_dollars() to trigger instantly during simulations
@@ -290,7 +315,7 @@ DV.SIM.new_ease_dollars = function(mod, instant)
    end
    DV.SIM._ease_dollars(mod, instant)
 end
-ease_dollars = DV.SIM.new_ease_dollars
+--ease_dollars = DV.SIM.new_ease_dollars
 
 
 function get_name_for_card(card, context)
@@ -379,4 +404,4 @@ DV.SIM.new_eval_card = function(card, context)
    end
    return ret, post_trig
 end
-eval_card = DV.SIM.new_eval_card
+--eval_card = DV.SIM.new_eval_card
