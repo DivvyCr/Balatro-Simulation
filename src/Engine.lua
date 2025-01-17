@@ -91,7 +91,7 @@ function DV.SIM.prepare_play()
    --[[
    print("HAND DATA")
    for i,card in pairs(G.play.cards) do
-      print("Fake PLAY #" .. i .. " = " .. card.base.name .." / card.T.x = " .. card.T.x)
+      print("Shadow PLAY #" .. i .. " = " .. card.base.name .." / card.T.x = " .. card.T.x)
    end
    --]]
 end
@@ -101,30 +101,32 @@ function DV.SIM.save_state()
    -- see comment in `DV.SIM.write_shadow_table` for some details.
    for k, _ in pairs(DV.SIM.real.main) do
       DV.SIM.real.main[k] = G[k]
-      DV.SIM.fake.main[k] = DV.SIM.write_shadow_table(DV.SIM.real.main[k], k)
-      G[k] = DV.SIM.fake.main[k]
+      DV.SIM.shadow.main[k] = DV.SIM.write_shadow_table(DV.SIM.real.main[k], k)
+      G[k] = DV.SIM.shadow.main[k]
    end
 
+   -- Most values in the `G` table aren't needed, so we can do a shadow copy 
+   -- of just the important values and leave the rest as real references
    -- Save the real `G` table:
    DV.SIM.real.global = G
 
-   if DV.SIM.fake.global then
+   if DV.SIM.shadow.global then
       -- Exists, so need to clear it:
-      for k, _ in pairs(DV.SIM.fake.global) do
-         DV.SIM.fake.global[k] = nil
+      for k, _ in pairs(DV.SIM.shadow.global) do
+         DV.SIM.shadow.global[k] = nil
       end
    else
       -- Does not exist, so need to create it:
-      DV.SIM.fake.global = DV.SIM.create_shadow_table(G, "G")
-      DV.SIM.fake.links[G] = nil
+      DV.SIM.shadow.global = DV.SIM.create_shadow_table(G, "G")
+      DV.SIM.shadow.links[G] = nil
    end
 
    -- Populate the shadow `G` table:
-   for k, v in pairs(DV.SIM.fake.main) do
-      DV.SIM.fake.global[k] = v
+   for k, v in pairs(DV.SIM.shadow.main) do
+      DV.SIM.shadow.global[k] = v
    end
    -- Shadow the `G` table:
-   G = DV.SIM.fake.global
+   G = DV.SIM.shadow.global
 end
 
 function DV.SIM.restore_state()
@@ -136,10 +138,10 @@ end
 
 function DV.SIM.reset_shadow_tables()
    local to_create = {}
-   for tbl, pt in pairs(DV.SIM.fake.links) do
+   for tbl, pt in pairs(DV.SIM.shadow.links) do
       local mt = getmetatable(pt)
       if rawget(mt, "is_shadow_table") == nil then
-         print("TABLE IN DV.SIM.fake.links IS NOT PSEUDO TABLE - " .. rawget(mt, "debug_orig"))
+         print("TABLE IN DV.SIM.shadow.links IS NOT PSEUDO TABLE - " .. rawget(mt, "debug_orig"))
       end
 
 
@@ -148,7 +150,7 @@ function DV.SIM.reset_shadow_tables()
       end
       for k, v in pairs(tbl) do
          if type(v) == "table" and not DV.SIM.IGNORED_KEYS[k] then
-            rawset(pt, k, DV.SIM.fake.links[v])
+            rawset(pt, k, DV.SIM.shadow.links[v])
             if rawget(pt, k) == nil then
                --print("NEED TO CREATE NEW VALUE FOR " .. rawget(mt, "debug_orig") .. "." .. k)
                local temp = {}
@@ -172,8 +174,8 @@ end
 function DV.SIM.write_shadow_table(tbl, debug)
    debug = debug or ""
 
-   if DV.SIM.fake.links[tbl] then
-      return DV.SIM.fake.links[tbl]
+   if DV.SIM.shadow.links[tbl] then
+      return DV.SIM.shadow.links[tbl]
    end
 
    -- The key idea is that the `__index` metamethod in shadow tables
@@ -182,6 +184,10 @@ function DV.SIM.write_shadow_table(tbl, debug)
    -- BUT value update only affects the updated shadow table,
    -- without affecting any underlying shadow tables (shadowing).
    -- This should solve most possibilities for 'pointer hell'.
+   -- 
+   -- Some tables don't need shadows and can be ignored 
+   -- to shrink shadow footprint and reduce processing.
+   -- Currently ignored are ui elements like 'children' and 'parent'
 
    local pt = DV.SIM.create_shadow_table(tbl, debug)
    for k, v in pairs(tbl) do
@@ -195,7 +201,7 @@ function DV.SIM.write_shadow_table(tbl, debug)
 end
 
 function DV.SIM.create_shadow_table(tbl, debug)
-   local pt = DV.SIM.fake.links[tbl]
+   local pt = DV.SIM.shadow.links[tbl]
 
    if pt == nil then
       pt = {}
@@ -206,7 +212,7 @@ function DV.SIM.create_shadow_table(tbl, debug)
       pt_mt.debug_orig = debug
       setmetatable(pt, pt_mt)
 
-      DV.SIM.fake.links[tbl] = pt
+      DV.SIM.shadow.links[tbl] = pt
    end
 
    return pt
