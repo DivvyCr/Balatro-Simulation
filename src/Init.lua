@@ -9,8 +9,8 @@ DV.SIM = {
 
    TYPES = {
       EXACT = -1,
-      MIN   = 0,
-      MAX   = 1,
+      MIN   = 1, -- by default large values are "worst case"
+      MAX   = 0, -- by default small values are "best case"
    },
    running_type = 0,
 
