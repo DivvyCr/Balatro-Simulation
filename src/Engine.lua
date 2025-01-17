@@ -116,7 +116,7 @@ function DV.SIM.save_state()
    else
       -- Does not exist, so need to create it:
       DV.SIM.fake.global = DV.SIM.create_shadow_table(G, "G")
-      DV.SIM.fake.cached[G] = nil
+      DV.SIM.fake.links[G] = nil
    end
 
    -- Populate the shadow `G` table:
@@ -136,10 +136,10 @@ end
 
 function DV.SIM.reset_shadow_tables()
    local to_create = {}
-   for tbl, pt in pairs(DV.SIM.fake.cached) do
+   for tbl, pt in pairs(DV.SIM.fake.links) do
       local mt = getmetatable(pt)
       if rawget(mt, "is_shadow_table") == nil then
-         print("TABLE IN DV.SIM.fake.cached IS NOT PSEUDO TABLE - " .. rawget(mt, "debug_orig"))
+         print("TABLE IN DV.SIM.fake.links IS NOT PSEUDO TABLE - " .. rawget(mt, "debug_orig"))
       end
 
 
@@ -148,7 +148,7 @@ function DV.SIM.reset_shadow_tables()
       end
       for k, v in pairs(tbl) do
          if type(v) == "table" and not DV.SIM.IGNORED_KEYS[k] then
-            rawset(pt, k, DV.SIM.fake.cached[v])
+            rawset(pt, k, DV.SIM.fake.links[v])
             if rawget(pt, k) == nil then
                --print("NEED TO CREATE NEW VALUE FOR " .. rawget(mt, "debug_orig") .. "." .. k)
                local temp = {}
@@ -172,8 +172,8 @@ end
 function DV.SIM.write_shadow_table(tbl, debug)
    debug = debug or ""
 
-   if DV.SIM.fake.cached[tbl] then
-      return DV.SIM.fake.cached[tbl]
+   if DV.SIM.fake.links[tbl] then
+      return DV.SIM.fake.links[tbl]
    end
 
    -- The key idea is that the `__index` metamethod in shadow tables
@@ -195,7 +195,7 @@ function DV.SIM.write_shadow_table(tbl, debug)
 end
 
 function DV.SIM.create_shadow_table(tbl, debug)
-   local pt = DV.SIM.fake.cached[tbl]
+   local pt = DV.SIM.fake.links[tbl]
 
    if pt == nil then
       pt = {}
@@ -206,7 +206,7 @@ function DV.SIM.create_shadow_table(tbl, debug)
       pt_mt.debug_orig = debug
       setmetatable(pt, pt_mt)
 
-      DV.SIM.fake.cached[tbl] = pt
+      DV.SIM.fake.links[tbl] = pt
    end
 
    return pt

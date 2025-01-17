@@ -29,7 +29,7 @@ DV.SIM = {
    fake = {
       global = nil, -- Shadow global `G` table
       main = {GAME={}, play={}, hand={}, jokers={}, consumeables={}, deck={}},   -- Top-level shadow tables (from MAIN_TABLES)
-      cached = {}, -- Other shadow tables
+      links = {}, -- Links to real_tables (links[real] = fake)
    },
 
    DEBUG = {},
