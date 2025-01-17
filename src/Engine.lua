@@ -313,7 +313,7 @@ DV.SIM.new_ease_dollars = function(mod, instant)
    if DV.SIM.running then
       instant = true
    end
-   DV.SIM._ease_dollars(mod, instant)
+   return DV.SIM._ease_dollars(mod, instant)
 end
 --ease_dollars = DV.SIM.new_ease_dollars
 
@@ -322,7 +322,7 @@ function get_name_for_card(card, context)
    -- If it doesn't have a base, I don't know what it is
    if card.base == nil then return "UNKNOWN CARD" end
    -- It's a joker, get it's name
-   if card.ability.set == 'Joker' then return card.base.name end
+   if card.ability.set == 'Joker' or card.ability.consumeable then return card.ability.name end
    -- otherwise, it's a playing card, and the modifiers may be random
    local edition = card.edition and card.edition.type
    local enhanced = card.config.center ~= G.P_CENTERS.c_base and card.ability.effect
@@ -331,17 +331,16 @@ function get_name_for_card(card, context)
    return card.base.name .. " / " .. tostring(edition) .. " / " .. tostring(enhanced) .. " / " .. tostring(seal)
 end
 
-function get_table_difference(table1, table2)
+function get_stupid_total(tbl)
    local ret = 0
-   for k, _ in pairs(table1) do
-      if type(table1[k]) == type(table2[k]) then
-         if type(table1[k]) == "number" then
-            ret = ret + table1[k] - table2[k]
-         elseif type(table1[k]) == "table" then
-            ret = ret + get_table_difference(table1[k], table2[k])
-         end
+   for k, v in pairs(tbl) do
+      if type(v) =="number" then
+         ret = ret + v
+      elseif type(v) == "table" then
+         ret = ret + get_stupid_total(v)
       end
    end
+
    return ret
 end
 
@@ -350,7 +349,7 @@ DV.SIM.new_eval_card = function(card, context)
    local max_triggers = #DV.SIM.random.unknown.max
    local min_triggers = #DV.SIM.random.unknown.min
 
-   local ret, post_trig = DV.SIM._eval_card(card, context)
+   local effects = {DV.SIM._eval_card(card, context)}
    if DV.SIM.running and G.SETTINGS.DV.show_min_max then
       local card_name = get_name_for_card(card)
 
@@ -365,8 +364,7 @@ DV.SIM.new_eval_card = function(card, context)
          while max_triggers < #DV.SIM.random.unknown.max do
             max_triggers = max_triggers + 1
             local seed_table = DV.SIM.random.unknown.max[max_triggers]
-            seed_table.effect = ret
-            seed_table.post = post_trig
+            seed_table.effects = effects
             seed_table.card_name = card_name
          end
       end
@@ -391,7 +389,7 @@ DV.SIM.new_eval_card = function(card, context)
                print("ERROR - SEED TABLE MISSING - UNKNOWN SEED - " .. seed)
             else
                local seed_table = table.remove(DV.SIM.random.unknown.max, found_max)
-               local diff = get_table_difference(seed_table.effect, ret)
+               local diff = get_stupid_total(seed_table.effects) - get_stupid_total(effects)
                DV.SIM.random.seeds[seed] = {}
                DV.SIM.random.seeds[seed].inverted = diff < 0
                if diff < 0 then
@@ -402,6 +400,6 @@ DV.SIM.new_eval_card = function(card, context)
          end
       end
    end
-   return ret, post_trig
+   return unpack(effects)
 end
 --eval_card = DV.SIM.new_eval_card
