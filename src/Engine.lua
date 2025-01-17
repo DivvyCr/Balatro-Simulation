@@ -4,19 +4,20 @@
 
 function DV.SIM.run()
    local null_ret = {
-      score   = {min = 0, exact = 0, max = 0},
-      dollars = {min = 0, exact = 0, max = 0}
+      score   = { min = 0, exact = 0, max = 0 },
+      dollars = { min = 0, exact = 0, max = 0 }
    }
    if #G.hand.highlighted < 1 then return null_ret end
 
    -- Simulation:
 
+   DV.SIM.random.need_reevaluation = false
    DV.SIM.running = true
    DV.SIM.save_state()
 
-   local min   = {chips = 0, mult = 0, dollars = 0}
-   local exact = {chips = 0, mult = 0, dollars = 0}
-   local max   = {chips = 0, mult = 0, dollars = 0}
+   local min   = { chips = 0, mult = 0, dollars = 0 }
+   local exact = { chips = 0, mult = 0, dollars = 0 }
+   local max   = { chips = 0, mult = 0, dollars = 0 }
 
    if G.SETTINGS.DV.show_min_max then
       DV.SIM.running_type = DV.SIM.TYPES.MAX
@@ -30,17 +31,21 @@ function DV.SIM.run()
    end
 
    DV.SIM.restore_state()
-   DV.SIM.running = false
+   DV.SIM.running    = false
+
+   if DV.SIM.random.need_reevaluation then
+      return DV.SIM.run()
+   end
 
    -- Return:
 
-   local min_score   = math.floor(min.chips   * min.mult)
+   local min_score   = math.floor(min.chips * min.mult)
    local exact_score = math.floor(exact.chips * exact.mult)
-   local max_score   = math.floor(max.chips   * max.mult)
+   local max_score   = math.floor(max.chips * max.mult)
 
    return {
-      score   = {min = min_score,   exact = exact_score,   max = max_score},
-      dollars = {min = min.dollars, exact = exact.dollars, max = max.dollars}
+      score   = { min = min_score, exact = exact_score, max = max_score },
+      dollars = { min = min.dollars, exact = exact.dollars, max = max.dollars }
    }
 end
 
@@ -53,9 +58,8 @@ function DV.SIM.simulate_play()
 
    --print("CALCULATED HAND - " .. hand_chips .. "x" .. mult .. " ($" .. cash .. ")")
 
-   return {chips = hand_chips, mult = mult, dollars = cash}
+   return { chips = hand_chips, mult = mult, dollars = cash }
 end
-
 
 -- The following function adjusts values as per `G.FUNCS.play_cards_from_highlighted(e)`
 function DV.SIM.prepare_play()
@@ -105,7 +109,7 @@ function DV.SIM.save_state()
       G[k] = DV.SIM.shadow.main[k]
    end
 
-   -- Most values in the `G` table aren't needed, so we can do a shadow copy 
+   -- Most values in the `G` table aren't needed, so we can do a shadow copy
    -- of just the important values and leave the rest as real references
    -- Save the real `G` table:
    DV.SIM.real.global = G
@@ -184,8 +188,8 @@ function DV.SIM.write_shadow_table(tbl, debug)
    -- BUT value update only affects the updated shadow table,
    -- without affecting any underlying shadow tables (shadowing).
    -- This should solve most possibilities for 'pointer hell'.
-   -- 
-   -- Some tables don't need shadows and can be ignored 
+   --
+   -- Some tables don't need shadows and can be ignored
    -- to shrink shadow footprint and reduce processing.
    -- Currently ignored are ui elements like 'children' and 'parent'
 
@@ -226,26 +230,52 @@ function TablePrint(t, depth, tabs)
    if depth == 0 then return end
    for k, v in pairs(t) do
       if type(v) == "table" then
-         print(tabs, k, ' = ', type(v))
+         print(tabs, k, ' = table')
          TablePrint(v, depth - 1, tabs .. '\t')
       else
-         print(tabs, k, ': ', t[k])
+         print(tabs, k, ': ', tostring(v))
       end
    end
 end
 
+-- Hook into pseudorandom() and pseudoseed() to force specific random results
 
-
--- Hook into pseudorandom() to force specific random results
+DV.SIM._pseudoseed = pseudoseed
+DV.SIM.new_pseudoseed = function(key, predict_seed)
+   if not DV.SIM.running or not G.SETTINGS.DV.show_min_max then
+      return DV.SIM._pseudoseed(key, predict_seed)
+   end
+   return key
+end
+pseudoseed = DV.SIM.new_pseudoseed
 
 DV.SIM._pseudorandom = pseudorandom
 DV.SIM.new_pseudorandom = function(seed, min, max)
    if not DV.SIM.running or not G.SETTINGS.DV.show_min_max then
       return DV.SIM._pseudorandom(seed, min, max)
-   elseif min and max then
-      return (max - min) * DV.SIM.running_type + min
    end
-   return DV.SIM.running_type
+
+   local ret = 0
+   if DV.SIM.random.seeds[seed] then
+      if DV.SIM.random.seeds[seed].inverted then
+         ret = (DV.SIM.running_type == DV.SIM.TYPES.MAX and 1) or 0
+      else
+         ret = (DV.SIM.running_type == DV.SIM.TYPES.MAX and 0) or 1
+      end
+   else
+      print("SEED (" .. seed .. ") IS UNKNOWN")
+      if DV.SIM.running_type == DV.SIM.TYPES.MAX then
+         table.insert(DV.SIM.random.unknown.max, { seed = seed })
+      else
+         table.insert(DV.SIM.random.unknown.min, { seed = seed })
+      end
+      ret = (DV.SIM.running_type == DV.SIM.TYPES.MAX and 0) or 1
+   end
+
+   if min and max then
+      return (max - min) * ret + min
+   end
+   return ret
 end
 pseudorandom = DV.SIM.new_pseudorandom
 
@@ -261,3 +291,92 @@ DV.SIM.new_ease_dollars = function(mod, instant)
    DV.SIM._ease_dollars(mod, instant)
 end
 ease_dollars = DV.SIM.new_ease_dollars
+
+
+function get_name_for_card(card, context)
+   -- If it doesn't have a base, I don't know what it is
+   if card.base == nil then return "UNKNOWN CARD" end
+   -- It's a joker, get it's name
+   if card.ability.set == 'Joker' then return card.base.name end
+   -- otherwise, it's a playing card, and the modifiers may be random
+   local edition = card.edition and card.edition.type
+   local enhanced = card.config.center ~= G.P_CENTERS.c_base and card.ability.effect
+   local seal = card.seal
+
+   return card.base.name .. " / " .. tostring(edition) .. " / " .. tostring(enhanced) .. " / " .. tostring(seal)
+end
+
+function get_table_difference(table1, table2)
+   local ret = 0
+   for k, _ in pairs(table1) do
+      if type(table1[k]) == type(table2[k]) then
+         if type(table1[k]) == "number" then
+            ret = ret + table1[k] - table2[k]
+         elseif type(table1[k]) == "table" then
+            ret = ret + get_table_difference(table1[k], table2[k])
+         end
+      end
+   end
+   return ret
+end
+
+DV.SIM._eval_card = eval_card
+DV.SIM.new_eval_card = function(card, context)
+   local max_triggers = #DV.SIM.random.unknown.max
+   local min_triggers = #DV.SIM.random.unknown.min
+
+   local ret, post_trig = DV.SIM._eval_card(card, context)
+   if DV.SIM.running and G.SETTINGS.DV.show_min_max then
+      local card_name = get_name_for_card(card)
+
+      -- Max is ran first
+      local new_max = #DV.SIM.random.unknown.max - max_triggers
+      if new_max > 0 then
+         if new_max > 1 then
+            print("ERROR - DUPLICATE TRIGGER FOR " .. card_name .. " - UNKNOWN RESULTS")
+         end
+
+         -- if duplicate trigger, put results on each. Otherwise, should only affect one table
+         while max_triggers < #DV.SIM.random.unknown.max do
+            max_triggers = max_triggers + 1
+            local seed_table = DV.SIM.random.unknown.max[max_triggers]
+            seed_table.effect = ret
+            seed_table.post = post_trig
+            seed_table.card_name = card_name
+         end
+      end
+
+      local new_min = #DV.SIM.random.unknown.min - min_triggers
+      if new_min > 0 then
+         if new_min > 1 then
+            print("ERROR - DUPLICATE TRIGGER FOR " .. card_name .. " - UNKNOWN RESULTS")
+         end
+
+         while new_min > 0 do
+            new_min = new_min - 1
+            local seed = table.remove(DV.SIM.random.unknown.min, 1).seed
+            local found_max = -1
+            for i, v in ipairs(DV.SIM.random.unknown.max) do
+               if v.seed == seed and v.card_name == card_name then
+                  found_max = i
+                  break
+               end
+            end
+            if found_max == -1 then
+               print("ERROR - SEED TABLE MISSING - UNKNOWN SEED - " .. seed)
+            else
+               local seed_table = table.remove(DV.SIM.random.unknown.max, found_max)
+               local diff = get_table_difference(seed_table.effect, ret)
+               DV.SIM.random.seeds[seed] = {}
+               DV.SIM.random.seeds[seed].inverted = diff < 0
+               if diff < 0 then
+                  DV.SIM.random.need_reevaluation = true
+               end
+               print("STORING SEED - " .. seed .. " - AS " .. ((diff >= 0 and "NOT") or "") .. " INVERTED")
+            end
+         end
+      end
+   end
+   return ret, post_trig
+end
+eval_card = DV.SIM.new_eval_card

@@ -32,5 +32,11 @@ DV.SIM = {
       links = {}, -- Links to real_tables (links[real] = shadow)
    },
 
+   random = {
+      unknown = {max = {}, min = {}},
+      seeds = {},
+      need_reevaluation = false
+   },
+
    DEBUG = {},
 }
