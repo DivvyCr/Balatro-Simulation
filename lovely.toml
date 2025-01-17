@@ -8,10 +8,7 @@ priority = 0
 # DVSimulate/
 # ├─ Engine.lua
 # ├─ Init.lua
-# ├─ Utils.lua
-# ├─ Jokers/
-# │  ├─ _Vanilla.lua
-# │  ├─ etc.
+# ├─ Hooks.lua
 
 [[patches]]
 [patches.copy]
@@ -30,4 +27,4 @@ sources = [ "Engine.lua" ]
 [patches.copy]
 target = "functions/common_events.lua"
 position = "append"
-sources = [ "Mute.lua" ]
+sources = [ "Hooks.lua" ]

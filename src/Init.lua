@@ -16,7 +16,7 @@ DV.SIM = {
 
    --
    -- TODO: Not the biggest fan of this table structure but it works for now...
-   --
+   --          fully agree. I'll work on it after fixing random code
 
    -- MAIN_TABLES = {"GAME", "play", "hand", "jokers", "consumeables", "deck"},
    IGNORED_KEYS = {role = true, children = true, parent = true, alignment = true},
@@ -26,10 +26,10 @@ DV.SIM = {
       main = {GAME={}, play={}, hand={}, jokers={}, consumeables={}, deck={}},   -- Real game tables (from MAIN_TABLES)
    },
 
-   fake = {
+   shadow = {
       global = nil, -- Shadow global `G` table
       main = {GAME={}, play={}, hand={}, jokers={}, consumeables={}, deck={}},   -- Top-level shadow tables (from MAIN_TABLES)
-      links = {}, -- Links to real_tables (links[real] = fake)
+      links = {}, -- Links to real_tables (links[real] = shadow)
    },
 
    DEBUG = {},
