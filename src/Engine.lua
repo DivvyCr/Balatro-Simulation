@@ -49,7 +49,7 @@ function DV.SIM.simulate_play()
 
    G.FUNCS.evaluate_play()
 
-   local cash = DV.SIM.real.main.GAME.dollars - G.GAME.dollars + (G.GAME.dollar_buffer or 0)
+   local cash = G.GAME.dollars - DV.SIM.real.main.GAME.dollars
 
    --print("CALCULATED HAND - " .. hand_chips .. "x" .. mult .. " ($" .. cash .. ")")
 
@@ -227,3 +227,31 @@ function TablePrint(t, depth, tabs)
       end
    end
 end
+
+
+
+-- Hook into pseudorandom() to force specific random results
+
+DV.SIM._pseudorandom = pseudorandom
+DV.SIM.new_pseudorandom = function(seed, min, max)
+   if not DV.SIM.running or not G.SETTINGS.DV.show_min_max then
+      return DV.SIM._pseudorandom(seed, min, max)
+   elseif min and max then
+      return (max - min) * DV.SIM.running_type + min
+   end
+   return DV.SIM.running_type
+end
+pseudorandom = DV.SIM.new_pseudorandom
+
+
+-- Force ease_dollars() to trigger instantly during simulations
+--    If not instant, some cards trigger using add_event() which is disabled
+
+DV.SIM._ease_dollars = ease_dollars
+DV.SIM.new_ease_dollars = function(mod, instant)
+   if DV.SIM.frozen then
+      instant = true
+   end
+   DV.SIM._ease_dollars(mod, instant)
+end
+ease_dollars = DV.SIM.new_ease_dollars
