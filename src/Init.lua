@@ -8,8 +8,8 @@ DV.SIM = {
    running = false,
 
    TYPES = {
-      MIN   = -1,
-      EXACT = 0,
+      EXACT = -1,
+      MIN   = 0,
       MAX   = 1,
    },
    running_type = 0,
