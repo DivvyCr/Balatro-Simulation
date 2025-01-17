@@ -249,7 +249,7 @@ pseudorandom = DV.SIM.new_pseudorandom
 
 DV.SIM._ease_dollars = ease_dollars
 DV.SIM.new_ease_dollars = function(mod, instant)
-   if DV.SIM.frozen then
+   if DV.SIM.running then
       instant = true
    end
    DV.SIM._ease_dollars(mod, instant)
