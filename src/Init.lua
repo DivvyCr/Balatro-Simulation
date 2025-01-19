@@ -1,6 +1,7 @@
 --- Divvy's Simulation for Balatro - Init.lua
 --
 -- Global values that must be present for the rest of this mod to work.
+local json = require "json"
 
 if not DV then DV = {} end
 
@@ -33,6 +34,41 @@ DV.SIM = {
       links = {},                                                                            -- Links to real_tables (links[real] = shadow)
    },
 
-   seeds = { known = {}, unknown = {} },
+   seeds = { known = {}, unknown = {}, save_loc = "" },
    DEBUG = false,
 }
+
+
+DV.SIM._start_up = Game.start_up
+function Game:start_up()
+   local temp = { DV.SIM._start_up(self) }
+   local filesystem = NFS or love.filesystem
+
+   for _, mod in pairs(SMODS.Mods) do
+      if mod.display_name == "DVSimulate" then
+         DV.SIM.seeds.save_loc = mod.path .. "/seeds.json"
+         local file_content, err = filesystem.read(DV.SIM.seeds.save_loc)
+         if file_content == nil then
+            print("CAN'T READ: " .. tostring(err))
+         else
+            local new_seeds = json.decode(file_content)
+            for seed, tbl in pairs(new_seeds) do
+               DV.SIM.seeds.known[seed] = tbl
+            end
+         end
+      end
+   end
+   return unpack(temp)
+end
+
+function DV.SIM.save_seed_json()
+   local filesystem = NFS or love.filesystem
+   local success, message = filesystem.write(DV.SIM.seeds.save_loc, json.encode(DV.SIM.seeds.known))
+   if not success then
+      print("CAN'T WRITE: " .. tostring(message))
+   end
+end
+
+function DV.SIM.create_seed_json()
+   return json.encode(DV.SIM.seeds.known)
+end
