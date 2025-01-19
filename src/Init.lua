@@ -23,14 +23,14 @@ DV.SIM = {
    IGNORED_KEYS = { role = true, children = true, parent = true, alignment = true, ability_UIBox_table = true, h_popup = true, example = true },
 
    real = {
-      global = nil,    -- Real global `G` table
+      global = nil,                                                                          -- Real global `G` table
       main = { GAME = {}, play = {}, hand = {}, jokers = {}, consumeables = {}, deck = {} }, -- Real game tables (from MAIN_TABLES)
    },
 
    shadow = {
-      global = nil,    -- Shadow global `G` table
+      global = nil,                                                                          -- Shadow global `G` table
       main = { GAME = {}, play = {}, hand = {}, jokers = {}, consumeables = {}, deck = {} }, -- Top-level shadow tables (from MAIN_TABLES)
-      links = {},     -- Links to real_tables (links[real] = shadow)
+      links = {},                                                                            -- Links to real_tables (links[real] = shadow)
    },
 
    seeds = { known = {}, unknown = {} },

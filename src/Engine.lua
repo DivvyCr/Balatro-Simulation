@@ -9,6 +9,8 @@ function DV.SIM.run()
    }
    if #G.hand.highlighted < 1 then return null_ret end
 
+   DV.SIM.hands_simulated = 1 + (DV.SIM.hands_simulated or 0)
+
    -- Simulation:
    local first = love.timer.getTime()
    local prev = first
@@ -328,6 +330,10 @@ function DV.SIM.clean_up()
       if pt_mt.creation_timestamp ~= DV.SIM.hands_simulated then
          -- this table is no longer relevant, remove cached links
          DV.SIM.shadow.links[tbl] = nil
+
+         -- Looks like the shadows aren't as "shadowy" as we want, so we'll just leave them to be garbage collected
+
+         --[[
          -- clear the metatable
          for k, _ in pairs(pt_mt) do
             pt_mt[k] = nil
@@ -337,6 +343,7 @@ function DV.SIM.clean_up()
          for k, _ in pairs(pt) do
             pt[k] = nil
          end
+         --]]
       end
    end
 end
