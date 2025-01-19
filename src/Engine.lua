@@ -10,32 +10,91 @@ function DV.SIM.run()
    if #G.hand.highlighted < 1 then return null_ret end
 
    -- Simulation:
+   local first = love.timer.getTime()
+   local prev = first
 
-   DV.SIM.random.need_reevaluation = false
    DV.SIM.running = true
    DV.SIM.save_state()
+   local last = love.timer.getTime()
+   print("SAVE STATE: " .. (last - prev))
+   prev = last
 
    local min   = { chips = 0, mult = 0, dollars = 0 }
    local exact = { chips = 0, mult = 0, dollars = 0 }
    local max   = { chips = 0, mult = 0, dollars = 0 }
 
    if G.SETTINGS.DV.show_min_max then
+      -- some seed titles append G.SEED to randomize seed
+      -- blank G.SEED to make seed titles consistent between runs
+      G.SEED = ""
+
+
+      --print("SIMULATE MAX")
       DV.SIM.running_type = DV.SIM.TYPES.MAX
       max = DV.SIM.simulate_play()
 
+      last = love.timer.getTime()
+      print("SIM MAX: " .. (last - prev))
+      prev = last
+
+      --print("SIMULATE MIN")
+      
       DV.SIM.running_type = DV.SIM.TYPES.MIN
       min = DV.SIM.simulate_play()
+
+      last = love.timer.getTime()
+      print("SIM MIN: " .. (last - prev))
+      prev = last
+
+
+      local recalculation_needed = false
+      for seed, _ in pairs(DV.SIM.seeds.unknown) do
+         DV.SIM.seeds.unknown[seed] = nil
+
+         --print("CHECKING FOR UNKNOWN SEED")
+         
+
+         local new_max, need_new = DV.SIM.attempt_to_find_seed(seed, max)
+         recalculation_needed = recalculation_needed or need_new
+         if need_new then
+            max = new_max
+         end
+
+         last = love.timer.getTime()
+         print("SIM SEED (" .. seed .. ") MAX: " .. (last - prev))
+         prev = last
+      end
+
+      if recalculation_needed then
+         --print("RESIMULATE MIN")
+         
+         DV.SIM.running_type = DV.SIM.TYPES.MIN
+         min = DV.SIM.simulate_play()
+
+         last = love.timer.getTime()
+         print("SIM NEW MID: " .. (last - prev))
+         prev = last
+      end
    else
       DV.SIM.running_type = DV.SIM.TYPES.EXACT
       exact = DV.SIM.simulate_play()
+
+      last = love.timer.getTime()
+      print("SIM EXACT: " .. (last - prev))
+      prev = last
    end
 
+   --print("RESTORE STATE")
+   
    DV.SIM.restore_state()
-   DV.SIM.running    = false
+   DV.SIM.running = false
 
-   if DV.SIM.random.need_reevaluation then
-      return DV.SIM.run()
-   end
+   last = love.timer.getTime()
+   print("RESTORE STATE: " .. (last - prev))
+   print("TOTAL TIME DIFF: " .. (last - first))
+
+   DV.SIM.clean_up()
+
 
    -- Return:
 
@@ -84,8 +143,10 @@ function DV.SIM.save_state()
 end
 
 function DV.SIM.simulate_play()
+   --print("PREPARE PLAY")
    DV.SIM.prepare_play()
 
+   --print("EVALUATE PLAY")
    G.FUNCS.evaluate_play()
 
    local cash = G.GAME.dollars - DV.SIM.real.main.GAME.dollars
@@ -112,7 +173,8 @@ function DV.SIM.prepare_play()
    --print("HIGHLIGHT DATA")
    for i = 1, #highlighted_cards do
       local card = highlighted_cards[i]
-      --print("Highlight #" .. i .. " = " .. card.base.name .." / card.T.x = " .. card.T.x)
+      --print("Highlight #" .. i .. " = " .. card.base.name .. " / card.T.x = " .. card.T.x)
+
       card.base.times_played = card.base.times_played + 1
       card.ability.played_this_ante = true
       G.GAME.round_scores.cards_played.amt = G.GAME.round_scores.cards_played.amt + 1
@@ -125,13 +187,29 @@ function DV.SIM.prepare_play()
       card.T.x = nil
    end
    table.sort(G.play.cards, function(a, b) return a.T.x < b.T.x end)
+end
 
-   --[[
-   print("HAND DATA")
-   for i,card in pairs(G.play.cards) do
-      print("Shadow PLAY #" .. i .. " = " .. card.base.name .." / card.T.x = " .. card.T.x)
+function DV.SIM.attempt_to_find_seed(seed, prev_max)
+   --print("TEST INVERSION OF " .. seed)
+
+   -- invert the seed and test it
+   DV.SIM.seeds.known[seed] = { inverted = true }
+   DV.SIM.running_type = DV.SIM.TYPES.MAX
+   local new_max = DV.SIM.simulate_play()
+
+   -- Check the results to see if inverted is not worth it
+   -- Three reasons to not invert:
+   --   1) Score is worse when inverted
+   --   2) Score didn't change, but dollars went down
+   --   3) No change (score is the same and dollars are the same)
+   local score_diff = new_max.chips * new_max.mult - prev_max.chips * prev_max.mult
+   if score_diff < 0 or (score_diff == 0 and new_max.dollars <= prev_max.dollars) then
+      DV.SIM.seeds.known[seed].inverted = false
    end
-   --]]
+
+   --print("FOUND SEED RESULTS FOR " .. seed .. " = " .. tostring(DV.SIM.seeds.known[seed].inverted))
+
+   return new_max, DV.SIM.seeds.known[seed].inverted
 end
 
 function DV.SIM.restore_state()
@@ -139,7 +217,7 @@ function DV.SIM.restore_state()
    for k, _ in pairs(DV.SIM.real.main) do
       G[k] = DV.SIM.real.main[k]
    end
-   
+
    DV.SIM.unhook_functions()
 end
 
@@ -212,6 +290,7 @@ function DV.SIM.create_shadow_table(tbl, debug)
 
    if pt == nil then
       pt = {}
+      --print("CREATING - " .. tostring(debug))
 
       local pt_mt = {}
       pt_mt.__index = tbl
@@ -225,6 +304,10 @@ function DV.SIM.create_shadow_table(tbl, debug)
    return pt
 end
 
+function DV.SIM.clean_up()
+   --print("CLEANING UP")
+end
+
 -- debug print
 
 function TablePrint(t, depth, tabs)
@@ -233,7 +316,7 @@ function TablePrint(t, depth, tabs)
    if depth == 0 then return end
    for k, v in pairs(t) do
       if type(v) == "table" then
-         print(tabs, k, ' = table')
+         print(tabs, k, ' = table (#' .. tostring(get_length(v)) .. ")")
          TablePrint(v, depth - 1, tabs .. '\t')
       else
          print(tabs, k, ': ', tostring(v))
@@ -245,7 +328,6 @@ function DV.SIM.hook_functions()
    pseudoseed = DV.SIM.new_pseudoseed
    pseudorandom = DV.SIM.new_pseudorandom
    ease_dollars = DV.SIM.new_ease_dollars
-   eval_card = DV.SIM.new_eval_card
    check_for_unlock = DV.SIM.new_check_for_unlock
    play_sound = DV.SIM.new_play_sound
    update_hand_text = DV.SIM.new_update_hand_text
@@ -256,7 +338,6 @@ function DV.SIM.unhook_functions()
    pseudoseed = DV.SIM._pseudoseed
    pseudorandom = DV.SIM._pseudorandom
    ease_dollars = DV.SIM._ease_dollars
-   eval_card = DV.SIM._eval_card
    check_for_unlock = DV.SIM._check_for_unlock
    play_sound = DV.SIM._play_sound
    update_hand_text = DV.SIM._update_hand_text
@@ -279,28 +360,17 @@ DV.SIM.new_pseudorandom = function(seed, min, max)
    if not DV.SIM.running or not G.SETTINGS.DV.show_min_max then
       return DV.SIM._pseudorandom(seed, min, max)
    end
+   min = min or 0
+   max = max or 1
 
-   local ret = 0
-   if DV.SIM.random.seeds[seed] then
-      if DV.SIM.random.seeds[seed].inverted then
-         ret = (DV.SIM.running_type == DV.SIM.TYPES.MAX and 1) or 0
-      else
-         ret = (DV.SIM.running_type == DV.SIM.TYPES.MAX and 0) or 1
-      end
-   else
-      print("SEED (" .. seed .. ") IS UNKNOWN")
-      if DV.SIM.running_type == DV.SIM.TYPES.MAX then
-         table.insert(DV.SIM.random.unknown.max, { seed = seed })
-      else
-         table.insert(DV.SIM.random.unknown.min, { seed = seed })
-      end
-      ret = (DV.SIM.running_type == DV.SIM.TYPES.MAX and 0) or 1
-   end
 
-   if min and max then
-      return (max - min) * ret + min
+   if not DV.SIM.seeds.known[seed] then
+      --print("SEED (" .. seed .. ") IS UNKNOWN")
+      DV.SIM.seeds.unknown[seed] = true
+   elseif DV.SIM.seeds.known[seed].inverted then
+      return (DV.SIM.running_type == DV.SIM.TYPES.MAX and max) or min
    end
-   return ret
+   return (DV.SIM.running_type == DV.SIM.TYPES.MAX and min) or max
 end
 --pseudorandom = DV.SIM.new_pseudorandom
 
@@ -316,90 +386,3 @@ DV.SIM.new_ease_dollars = function(mod, instant)
    return DV.SIM._ease_dollars(mod, instant)
 end
 --ease_dollars = DV.SIM.new_ease_dollars
-
-
-function get_name_for_card(card, context)
-   -- If it doesn't have a base, I don't know what it is
-   if card.base == nil then return "UNKNOWN CARD" end
-   -- It's a joker, get it's name
-   if card.ability.set == 'Joker' or card.ability.consumeable then return card.ability.name end
-   -- otherwise, it's a playing card, and the modifiers may be random
-   local edition = card.edition and card.edition.type
-   local enhanced = card.config.center ~= G.P_CENTERS.c_base and card.ability.effect
-   local seal = card.seal
-
-   return card.base.name .. " / " .. tostring(edition) .. " / " .. tostring(enhanced) .. " / " .. tostring(seal)
-end
-
-function get_stupid_total(tbl)
-   local ret = 0
-   for k, v in pairs(tbl) do
-      if type(v) =="number" then
-         ret = ret + v
-      elseif type(v) == "table" then
-         ret = ret + get_stupid_total(v)
-      end
-   end
-
-   return ret
-end
-
-DV.SIM._eval_card = eval_card
-DV.SIM.new_eval_card = function(card, context)
-   local max_triggers = #DV.SIM.random.unknown.max
-   local min_triggers = #DV.SIM.random.unknown.min
-
-   local effects = {DV.SIM._eval_card(card, context)}
-   if DV.SIM.running and G.SETTINGS.DV.show_min_max then
-      local card_name = get_name_for_card(card)
-
-      -- Max is ran first
-      local new_max = #DV.SIM.random.unknown.max - max_triggers
-      if new_max > 0 then
-         if new_max > 1 then
-            print("ERROR - DUPLICATE TRIGGER FOR " .. card_name .. " - UNKNOWN RESULTS")
-         end
-
-         -- if duplicate trigger, put results on each. Otherwise, should only affect one table
-         while max_triggers < #DV.SIM.random.unknown.max do
-            max_triggers = max_triggers + 1
-            local seed_table = DV.SIM.random.unknown.max[max_triggers]
-            seed_table.effects = effects
-            seed_table.card_name = card_name
-         end
-      end
-
-      local new_min = #DV.SIM.random.unknown.min - min_triggers
-      if new_min > 0 then
-         if new_min > 1 then
-            print("ERROR - DUPLICATE TRIGGER FOR " .. card_name .. " - UNKNOWN RESULTS")
-         end
-
-         while new_min > 0 do
-            new_min = new_min - 1
-            local seed = table.remove(DV.SIM.random.unknown.min, 1).seed
-            local found_max = -1
-            for i, v in ipairs(DV.SIM.random.unknown.max) do
-               if v.seed == seed and v.card_name == card_name then
-                  found_max = i
-                  break
-               end
-            end
-            if found_max == -1 then
-               print("ERROR - SEED TABLE MISSING - UNKNOWN SEED - " .. seed)
-            else
-               local seed_table = table.remove(DV.SIM.random.unknown.max, found_max)
-               local diff = get_stupid_total(seed_table.effects) - get_stupid_total(effects)
-               DV.SIM.random.seeds[seed] = {}
-               DV.SIM.random.seeds[seed].inverted = diff < 0
-               if diff < 0 then
-                  DV.SIM.random.need_reevaluation = true
-               end
-               print("STORING SEED - " .. seed .. " - AS " .. ((diff >= 0 and "NOT") or "") .. " INVERTED")
-            end
-         end
-      end
-   end
-   return unpack(effects)
-end
---eval_card = DV.SIM.new_eval_card
