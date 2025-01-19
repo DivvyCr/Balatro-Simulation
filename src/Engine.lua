@@ -17,7 +17,7 @@ function DV.SIM.run()
    DV.SIM.save_state()
    local last = love.timer.getTime()
    print("SAVE STATE: " .. (last - prev))
-   prev = last
+   prev        = last
 
    local min   = { chips = 0, mult = 0, dollars = 0 }
    local exact = { chips = 0, mult = 0, dollars = 0 }
@@ -38,7 +38,7 @@ function DV.SIM.run()
       prev = last
 
       --print("SIMULATE MIN")
-      
+
       DV.SIM.running_type = DV.SIM.TYPES.MIN
       min = DV.SIM.simulate_play()
 
@@ -52,7 +52,7 @@ function DV.SIM.run()
          DV.SIM.seeds.unknown[seed] = nil
 
          --print("CHECKING FOR UNKNOWN SEED")
-         
+
 
          local new_max, need_new = DV.SIM.attempt_to_find_seed(seed, max)
          recalculation_needed = recalculation_needed or need_new
@@ -67,7 +67,7 @@ function DV.SIM.run()
 
       if recalculation_needed then
          --print("RESIMULATE MIN")
-         
+
          DV.SIM.running_type = DV.SIM.TYPES.MIN
          min = DV.SIM.simulate_play()
 
@@ -85,15 +85,20 @@ function DV.SIM.run()
    end
 
    --print("RESTORE STATE")
-   
+
    DV.SIM.restore_state()
    DV.SIM.running = false
 
    last = love.timer.getTime()
    print("RESTORE STATE: " .. (last - prev))
-   print("TOTAL TIME DIFF: " .. (last - first))
+   prev = last
 
    DV.SIM.clean_up()
+
+   last = love.timer.getTime()
+   print("CLEAN UP: " .. (last - prev))
+   print("TOTAL TIME DIFF: " .. (last - first))
+
 
 
    -- Return:
@@ -258,9 +263,20 @@ end
 
 function DV.SIM.write_shadow_table(tbl, debug)
    debug = debug or ""
+   local pt = nil
 
    if DV.SIM.shadow.links[tbl] then
-      return DV.SIM.shadow.links[tbl]
+      pt = DV.SIM.shadow.links[tbl]
+      local pt_mt = getmetatable(pt)
+      if pt_mt.creation_timestamp == DV.SIM.hands_simulated then
+         -- this table has been processed, don't continue
+         -- may cause loops if continuing
+         return pt
+      end
+
+      pt_mt.creation_timestamp = DV.SIM.hands_simulated
+   else
+      pt = DV.SIM.create_shadow_table(tbl, debug)
    end
 
    -- The key idea is that the `__index` metamethod in shadow tables
@@ -274,7 +290,6 @@ function DV.SIM.write_shadow_table(tbl, debug)
    -- to shrink shadow footprint and reduce processing.
    -- Currently ignored are ui elements like 'children' and 'parent'
 
-   local pt = DV.SIM.create_shadow_table(tbl, debug)
    for k, v in pairs(tbl) do
       -- Read above on why we ignore values, only writing shadow tables:
       if type(v) == "table" and not DV.SIM.IGNORED_KEYS[k] then
@@ -296,6 +311,7 @@ function DV.SIM.create_shadow_table(tbl, debug)
       pt_mt.__index = tbl
       pt_mt.is_shadow_table = true
       pt_mt.debug_orig = debug
+      pt_mt.creation_timestamp = DV.SIM.hands_simulated
       setmetatable(pt, pt_mt)
 
       DV.SIM.shadow.links[tbl] = pt
@@ -306,6 +322,23 @@ end
 
 function DV.SIM.clean_up()
    --print("CLEANING UP")
+   print("DATABASE SIZE: " .. get_length(DV.SIM.shadow.links))
+   for tbl, pt in pairs(DV.SIM.shadow.links) do
+      local pt_mt = getmetatable(pt)
+      if pt_mt.creation_timestamp ~= DV.SIM.hands_simulated then
+         -- this table is no longer relevant, remove cached links
+         DV.SIM.shadow.links[tbl] = nil
+         -- clear the metatable
+         for k, _ in pairs(pt_mt) do
+            pt_mt[k] = nil
+         end
+         setmetatable(pt, nil)
+         -- clear the shadow table
+         for k, _ in pairs(pt) do
+            pt[k] = nil
+         end
+      end
+   end
 end
 
 -- debug print
@@ -322,6 +355,14 @@ function TablePrint(t, depth, tabs)
          print(tabs, k, ': ', tostring(v))
       end
    end
+end
+
+function get_length(tbl)
+   local ret = 0
+   for _, _ in pairs(tbl) do
+      ret = ret + 1
+   end
+   return ret
 end
 
 function DV.SIM.hook_functions()

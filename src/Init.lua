@@ -13,6 +13,7 @@ DV.SIM = {
       MAX   = 0, -- by default small values are "best case"
    },
    running_type = 0,
+   hands_simulated = 0,
 
    --
    -- TODO: Not the biggest fan of this table structure but it works for now...
