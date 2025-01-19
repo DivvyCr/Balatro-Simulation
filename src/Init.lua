@@ -20,7 +20,7 @@ DV.SIM = {
    --          fully agree. I'll work on it after fixing random code
 
    -- MAIN_TABLES = {"GAME", "play", "hand", "jokers", "consumeables", "deck"},
-   IGNORED_KEYS = { role = true, children = true, parent = true, alignment = true, ability_UIBox_table = true, h_popup = true, example = true },
+   IGNORED_KEYS = { role = true, children = true, parent = true, alignment = true, ability_UIBox_table = true, h_popup = true, example = true, dissolve_colours = true },
 
    real = {
       global = nil,                                                                          -- Real global `G` table
