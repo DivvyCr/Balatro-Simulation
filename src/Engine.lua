@@ -206,6 +206,8 @@ function DV.SIM.attempt_to_find_seed(seed, prev_max)
       DV.SIM.seeds.known[seed].inverted = false
    end
 
+   DV.SIM.save_seed_json()
+
    return new_max, DV.SIM.seeds.known[seed].inverted
 end
 
