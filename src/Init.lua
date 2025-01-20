@@ -14,28 +14,53 @@ DV.SIM = {
       MAX   = 0, -- by default small values are "best case"
    },
    running_type = 0,
-   hands_simulated = 0,
+   total_simulations = 0,
 
-   --
-   -- TODO: Not the biggest fan of this table structure but it works for now...
-   --          fully agree. I'll work on it after fixing random code
+   -- Tables that should be shadowed:
+   MAIN_TABLES = {
+      "GAME",
+      "play",
+      "hand",
+      "jokers",
+      "consumeables",
+      "deck",
+   },
 
-   -- MAIN_TABLES = {"GAME", "play", "hand", "jokers", "consumeables", "deck"},
-   IGNORED_KEYS = { role = true, children = true, parent = true, alignment = true, ability_UIBox_table = true, h_popup = true, example = true, dissolve_colours = true },
+   -- Table keys that should not be shadowed (to preserve memory):
+   IGNORED_KEYS = {
+      "role",
+      "children",
+      "parent",
+      "alignment",
+      "ability_UIBox_table",
+      "h_popup",
+      "example",
+      "dissolve_colours",
+   },
 
    real = {
-      global = nil,                                                                          -- Real global `G` table
-      main = { GAME = {}, play = {}, hand = {}, jokers = {}, consumeables = {}, deck = {} }, -- Real game tables (from MAIN_TABLES)
+      global = nil, -- Real global `G` table
+      main = {GAME={}, play={}, hand={}, jokers={}, consumeables={}, deck={}}, -- Real game tables (from MAIN_TABLES)
    },
 
    shadow = {
-      global = nil,                                                                          -- Shadow global `G` table
-      main = { GAME = {}, play = {}, hand = {}, jokers = {}, consumeables = {}, deck = {} }, -- Top-level shadow tables (from MAIN_TABLES)
-      links = {},                                                                            -- Links to real_tables (links[real] = shadow)
+      global = nil, -- Shadow global `G` table 
+      main = {GAME={}, play={}, hand={}, jokers={}, consumeables={}, deck={}}, -- Top-level shadow tables (from MAIN_TABLES)
+      links = {},   -- Links to real_tables (links[real] = shadow)
    },
 
-   seeds = { known = {}, unknown = {}, save_loc = "" },
+   seeds = {
+      known = {},
+      unknown = {},
+      save_loc = "",
+   },
+
    DEBUG = false,
+   debug_data = {
+      -- Time data for rough benchmarking:
+      t1 = 0,
+      t2 = 0,
+   },
 }
 
 

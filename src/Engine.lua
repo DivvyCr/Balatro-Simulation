@@ -9,104 +9,34 @@ function DV.SIM.run()
    }
    if #G.hand.highlighted < 1 then return null_ret end
 
-   DV.SIM.hands_simulated = 1 + (DV.SIM.hands_simulated or 0)
+   DV.SIM.total_simulations = 1 + (DV.SIM.total_simulations or 0)
 
    -- Simulation:
-   local first = love.timer.getTime()
-   local prev = first
+   local t0 = love.timer.getTime() -- Used at the end to get total simulation time!
+   DV.SIM.debug_data.t1 = t0
 
    DV.SIM.running = true
    DV.SIM.save_state()
 
-   local last = love.timer.getTime()
-   if DV.SIM.DEBUG then
-      print("SAVE STATE: " .. (last - prev))
-      prev = last
-   end
+   debug_timer("SAVE STATE")
 
    local min   = { chips = 0, mult = 0, dollars = 0 }
    local exact = { chips = 0, mult = 0, dollars = 0 }
    local max   = { chips = 0, mult = 0, dollars = 0 }
 
    if G.SETTINGS.DV.show_min_max then
-      -- some seed titles append G.SEED to randomize seed
-      -- blank G.SEED to make seed titles consistent between runs
-      G.SEED = ""
-
-      DV.SIM.running_type = DV.SIM.TYPES.MAX
-      max = DV.SIM.simulate_play()
-
-      if DV.SIM.DEBUG then
-         last = love.timer.getTime()
-         print("SIM MAX: " .. (last - prev))
-         prev = last
-      end
-
-      DV.SIM.running_type = DV.SIM.TYPES.MIN
-      min = DV.SIM.simulate_play()
-
-      if DV.SIM.DEBUG then
-         last = love.timer.getTime()
-         print("SIM MIN: " .. (last - prev))
-         prev = last
-      end
-
-
-      local recalculation_needed = false
-      for seed, _ in pairs(DV.SIM.seeds.unknown) do
-         DV.SIM.seeds.unknown[seed] = nil
-
-         local new_max, need_new = DV.SIM.attempt_to_find_seed(seed, max)
-         recalculation_needed = recalculation_needed or need_new
-         if need_new then
-            max = new_max
-         end
-
-         if DV.SIM.DEBUG then
-            last = love.timer.getTime()
-            print("SIM SEED (" .. seed .. ") MAX: " .. (last - prev))
-            prev = last
-         end
-      end
-
-      if recalculation_needed then
-         DV.SIM.running_type = DV.SIM.TYPES.MIN
-         min = DV.SIM.simulate_play()
-
-         if DV.SIM.DEBUG then
-            last = love.timer.getTime()
-            print("SIM NEW MID: " .. (last - prev))
-            prev = last
-         end
-      end
+      min, max = DV.SIM.simulate_min_max()
    else
-      DV.SIM.running_type = DV.SIM.TYPES.EXACT
-      exact = DV.SIM.simulate_play()
-
-      if DV.SIM.DEBUG then
-         last = love.timer.getTime()
-         print("SIM EXACT: " .. (last - prev))
-         prev = last
-      end
+      exact = DV.SIM.simulate_play(DV.SIM.TYPES.EXACT)
+      debug_timer("SIM EXACT")
    end
 
    DV.SIM.restore_state()
    DV.SIM.running = false
 
-   if DV.SIM.DEBUG then
-      last = love.timer.getTime()
-      print("RESTORE STATE: " .. (last - prev))
-      prev = last
-   end
+   debug_timer("RESTORE STATE")
 
-   DV.SIM.clean_up()
-
-   if DV.SIM.DEBUG then
-      last = love.timer.getTime()
-      print("CLEAN UP: " .. (last - prev))
-      print("TOTAL TIME DIFF: " .. (last - first))
-   end
-
+   print("TOTAL SIMULATION TIME: " .. (DV.SIM.debug_data.t2 - t0))
 
    -- Return:
 
@@ -120,6 +50,59 @@ function DV.SIM.run()
    }
 end
 
+function DV.SIM.simulate_min_max()
+   -- Must clear `G.SEED` for consistency, as some RNG seeds are appended to it:
+   G.SEED = ""
+
+   local max = DV.SIM.simulate_play(DV.SIM.TYPES.MAX)
+   debug_timer("SIM MAX")
+
+   local min = DV.SIM.simulate_play(DV.SIM.TYPES.MIN)
+   debug_timer("SIM MIN")
+
+   -- Random events use different custom seeds, which are usually short strings
+   -- like "lucky_money" and "lucky_mult" for lucky card triggers.
+   --
+   -- Often, higher probabilities are associated with higher scores such as for
+   -- the Misprint joker where probability 0 gives +0 mult and probability 1 gives +23 mult;
+   -- but sometimes lower probabilities are preferred such as for Lucky Cards
+   -- where probabilities under 0.2 give +20 mult.
+   --
+   -- Therefore, it is important to discern between 'normal' seeds and
+   -- 'inverted' seeds (preferring high and low probabilities, respectively).
+   --
+   -- This is achieved by classifying seeds in DV.SIM.seeds as exactly one of:
+   --   unknown[seed]                  First time seeing seed
+   --   known[seed].inverted = false   Seed was found to be 'normal'
+   --   known[seed].inverted = true    Seed was found to be 'inverted'
+   --
+   -- To check an unknown seed, it is sufficient to run an extra simulation
+   -- temporarily setting it to inverted: if the results are better
+   -- when inverted, then the seed will be classified as inverted;
+   -- otherwise, it will be classified as normal.
+
+   local recalculate = false
+   for seed, _ in pairs(DV.SIM.seeds.unknown) do
+      DV.SIM.seeds.unknown[seed] = nil
+
+      local new_max, new_recalculate = DV.SIM.classify_seed(seed, max)
+
+      recalculate = recalculate or new_recalculate
+      if new_recalculate then max = new_max end
+
+      debug_timer("SIM SEED (" .. seed .. ") MAX")
+   end
+
+   -- If any seed was newly classified as inverted, then recalculate as a whole:
+   if recalculate then
+      min = DV.SIM.simulate_play(DV.SIM.TYPES.MIN)
+      debug_timer("SIM NEW MID")
+   end
+
+   return min, max
+end
+
+
 function DV.SIM.save_state()
    DV.SIM.hook_functions()
    -- Swap real global tables with simulation tables via `__index` metamethod;
@@ -132,6 +115,7 @@ function DV.SIM.save_state()
 
    -- Most values in the `G` table aren't needed, so we can do a shadow copy
    -- of just the important values and leave the rest as real references
+
    -- Save the real `G` table:
    DV.SIM.real.global = G
 
@@ -154,7 +138,9 @@ function DV.SIM.save_state()
    G = DV.SIM.shadow.global
 end
 
-function DV.SIM.simulate_play()
+function DV.SIM.simulate_play(type)
+   DV.SIM.running_type = type
+
    DV.SIM.prepare_play()
    G.FUNCS.evaluate_play()
 
@@ -190,31 +176,25 @@ function DV.SIM.prepare_play()
    table.sort(G.play.cards, function(a, b) return a.T.x < b.T.x end)
 end
 
-function DV.SIM.attempt_to_find_seed(seed, prev_max)
-   -- invert the seed and test it
-   DV.SIM.seeds.known[seed] = { inverted = true }
-   DV.SIM.running_type = DV.SIM.TYPES.MAX
-   local new_max = DV.SIM.simulate_play()
-
-   -- Check the results to see if inverted is not worth it
-   -- Three reasons to not invert:
-   --   1) Score is worse when inverted
-   --   2) Score didn't change, but dollars went down
-   --   3) No change (score is the same and dollars are the same)
-   local score_diff = new_max.chips * new_max.mult - prev_max.chips * prev_max.mult
-   if score_diff < 0 or (score_diff == 0 and new_max.dollars <= prev_max.dollars) then
-      DV.SIM.seeds.known[seed].inverted = false
-   end
-
-   DV.SIM.save_seed_json()
-
-   return new_max, DV.SIM.seeds.known[seed].inverted
-end
-
 function DV.SIM.restore_state()
+   -- Restore real tables:
+
    G = DV.SIM.real.global
    for k, _ in pairs(DV.SIM.real.main) do
       G[k] = DV.SIM.real.main[k]
+   end
+
+   -- Clean-up:
+
+   if DV.SIM.DEBUG then
+      print("DATABASE SIZE: " .. get_length(DV.SIM.shadow.links))
+   end
+   for tbl, pt in pairs(DV.SIM.shadow.links) do
+      local pt_mt = getmetatable(pt)
+      if pt_mt.created_simulation_num ~= DV.SIM.total_simulations then
+         -- this table is no longer relevant, remove cached links
+         DV.SIM.shadow.links[tbl] = nil
+      end
    end
 
    DV.SIM.unhook_functions()
@@ -260,13 +240,13 @@ function DV.SIM.write_shadow_table(tbl, debug)
    if DV.SIM.shadow.links[tbl] then
       pt = DV.SIM.shadow.links[tbl]
       local pt_mt = getmetatable(pt)
-      if pt_mt.creation_timestamp == DV.SIM.hands_simulated then
+      if pt_mt.created_simulation_num == DV.SIM.total_simulations then
          -- this table has been processed, don't continue
          -- may cause loops if continuing
          return pt
       end
 
-      pt_mt.creation_timestamp = DV.SIM.hands_simulated
+      pt_mt.created_simulation_num = DV.SIM.total_simulations
    else
       pt = DV.SIM.create_shadow_table(tbl, debug)
    end
@@ -277,10 +257,6 @@ function DV.SIM.write_shadow_table(tbl, debug)
    -- BUT value update only affects the updated shadow table,
    -- without affecting any underlying shadow tables (shadowing).
    -- This should solve most possibilities for 'pointer hell'.
-   --
-   -- Some tables don't need shadows and can be ignored
-   -- to shrink shadow footprint and reduce processing.
-   -- Currently ignored are ui elements like 'children' and 'parent'
 
    for k, v in pairs(tbl) do
       -- Read above on why we ignore values, only writing shadow tables:
@@ -301,7 +277,7 @@ function DV.SIM.create_shadow_table(tbl, debug)
       pt_mt.__index = tbl
       pt_mt.is_shadow_table = true
       pt_mt.debug_orig = debug
-      pt_mt.creation_timestamp = DV.SIM.hands_simulated
+      pt_mt.created_simulation_num = DV.SIM.total_simulations
       setmetatable(pt, pt_mt)
 
       DV.SIM.shadow.links[tbl] = pt
@@ -310,37 +286,31 @@ function DV.SIM.create_shadow_table(tbl, debug)
    return pt
 end
 
-function DV.SIM.clean_up()
-   if DV.SIM.DEBUG then
-      print("DATABASE SIZE: " .. get_length(DV.SIM.shadow.links))
-   end
-   for tbl, pt in pairs(DV.SIM.shadow.links) do
-      local pt_mt = getmetatable(pt)
-      if pt_mt.creation_timestamp ~= DV.SIM.hands_simulated then
-         -- this table is no longer relevant, remove cached links
-         DV.SIM.shadow.links[tbl] = nil
-      end
-   end
-end
+--
+-- RNG Handling:
+--
 
-function DV.SIM.hook_functions()
-   pseudoseed = DV.SIM.new_pseudoseed
-   pseudorandom = DV.SIM.new_pseudorandom
-   ease_dollars = DV.SIM.new_ease_dollars
-   check_for_unlock = DV.SIM.new_check_for_unlock
-   play_sound = DV.SIM.new_play_sound
-   update_hand_text = DV.SIM.new_update_hand_text
-   EventManager.add_event = DV.SIM.new_add_event
-end
+function DV.SIM.classify_seed(seed, prev_max)
+   -- Invert the seed to test it:
+   DV.SIM.seeds.known[seed] = { inverted = true }
+   local new_max = DV.SIM.simulate_play(DV.SIM.TYPES.MAX)
 
-function DV.SIM.unhook_functions()
-   pseudoseed = DV.SIM._pseudoseed
-   pseudorandom = DV.SIM._pseudorandom
-   ease_dollars = DV.SIM._ease_dollars
-   check_for_unlock = DV.SIM._check_for_unlock
-   play_sound = DV.SIM._play_sound
-   update_hand_text = DV.SIM._update_hand_text
-   EventManager.add_event = DV.SIM._add_event
+   -- Check the results to see if inverted is not worth it
+   -- Three reasons to not invert:
+   --   * Score is lower;
+   --   * Score is unchanged, but money is lower;
+   --   * No change.
+   local score_diff = new_max.chips * new_max.mult - prev_max.chips * prev_max.mult
+   if score_diff < 0 or (score_diff == 0 and new_max.dollars <= prev_max.dollars) then
+      DV.SIM.seeds.known[seed].inverted = false
+   end
+
+   DV.SIM.save_seed_json()
+
+   -- If seed yields better results when inverted, then the whole play should
+   -- be re-simulated with this new knowledge:
+   local recalculate = DV.SIM.seeds.known[seed].inverted
+   return new_max, recalculate
 end
 
 -- Hook into pseudorandom() and pseudoseed() to force specific random results
@@ -371,31 +341,9 @@ DV.SIM.new_pseudorandom = function(seed, min, max)
    return (DV.SIM.running_type == DV.SIM.TYPES.MAX and min) or max
 end
 
--- Force ease_dollars() to trigger instantly during simulations
---    If not instant, some cards trigger using add_event() which is disabled
-DV.SIM._ease_dollars = ease_dollars
-DV.SIM.new_ease_dollars = function(mod, instant)
-   if DV.SIM.running then
-      instant = true
-   end
-   return DV.SIM._ease_dollars(mod, instant)
-end
-
--- debug print
-
-function TablePrint(t, depth, tabs)
-   depth = depth or 3
-   tabs = tabs or ''
-   if depth == 0 then return end
-   for k, v in pairs(t) do
-      if type(v) == "table" then
-         print(tabs, k, ' = table (#' .. tostring(get_length(v)) .. ")")
-         TablePrint(v, depth - 1, tabs .. '\t')
-      else
-         print(tabs, k, ': ', tostring(v))
-      end
-   end
-end
+--
+-- Utils:
+--
 
 function get_length(tbl)
    local ret = 0
@@ -403,4 +351,12 @@ function get_length(tbl)
       ret = ret + 1
    end
    return ret
+end
+
+function debug_timer(msg)
+   if DV.SIM.DEBUG then
+      DV.SIM.debug_data.t2 = love.timer.getTime()
+      print(msg .. ": " .. (DV.SIM.debug_data.t2 - DV.SIM.debug_data.t1))
+      DV.SIM.debug_data.t1 = DV.SIM.debug_data.t2
+   end
 end
