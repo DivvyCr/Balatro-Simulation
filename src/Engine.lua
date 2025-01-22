@@ -25,7 +25,8 @@ function DV.SIM.run()
    local max   = { chips = 0, mult = 0, dollars = 0 }
 
    if G.SETTINGS.DV.show_min_max then
-      min, max = DV.SIM.simulate_min_max()
+      max = DV.SIM.simulate_max()
+      min = DV.SIM.simulate_min()
    else
       exact = DV.SIM.simulate_play(DV.SIM.TYPES.EXACT)
       debug_timer("SIM EXACT")
@@ -35,6 +36,8 @@ function DV.SIM.run()
    DV.SIM.running = false
 
    debug_timer("RESTORE STATE")
+
+   DV.SIM.clean_up()
 
    print("TOTAL SIMULATION TIME: " .. (DV.SIM.debug_data.t2 - t0))
 
@@ -50,15 +53,9 @@ function DV.SIM.run()
    }
 end
 
-function DV.SIM.simulate_min_max()
-   -- Must clear `G.SEED` for consistency, as some RNG seeds are appended to it:
-   G.SEED = ""
-
+function DV.SIM.simulate_max()
    local max = DV.SIM.simulate_play(DV.SIM.TYPES.MAX)
    debug_timer("SIM MAX")
-
-   local min = DV.SIM.simulate_play(DV.SIM.TYPES.MIN)
-   debug_timer("SIM MIN")
 
    -- Random events use different custom seeds, which are usually short strings
    -- like "lucky_money" and "lucky_mult" for lucky card triggers.
@@ -76,32 +73,33 @@ function DV.SIM.simulate_min_max()
    --   known[seed].inverted = false   Seed was found to be 'normal'
    --   known[seed].inverted = true    Seed was found to be 'inverted'
    --
+   -- During the simulate_play function, seeds will be added to DV.SIM.seeds.unknown
+   -- as they are encountered. At this point in the code, any unknown seeds
+   -- will be added to the table and read to be checked.
+   --
    -- To check an unknown seed, it is sufficient to run an extra simulation
    -- temporarily setting it to inverted: if the results are better
    -- when inverted, then the seed will be classified as inverted;
    -- otherwise, it will be classified as normal.
 
-   local recalculate = false
    for seed, _ in pairs(DV.SIM.seeds.unknown) do
       DV.SIM.seeds.unknown[seed] = nil
 
-      local new_max, new_recalculate = DV.SIM.classify_seed(seed, max)
-
-      recalculate = recalculate or new_recalculate
-      if new_recalculate then max = new_max end
+      -- If seed is determined to be inverted, a new max will be returned.
+      -- If seed is normal, then the current max will be returned.
+      -- No additional simulations are needed.
+      max = DV.SIM.classify_seed(seed, max)
 
       debug_timer("SIM SEED (" .. seed .. ") MAX")
    end
-
-   -- If any seed was newly classified as inverted, then recalculate as a whole:
-   if recalculate then
-      min = DV.SIM.simulate_play(DV.SIM.TYPES.MIN)
-      debug_timer("SIM NEW MID")
-   end
-
-   return min, max
+   return max
 end
 
+function DV.SIM.simulate_min()
+   local min = DV.SIM.simulate_play(DV.SIM.TYPES.MIN)
+   debug_timer("SIM MIN")
+   return min
+end
 
 function DV.SIM.save_state()
    DV.SIM.hook_functions()
@@ -139,6 +137,9 @@ function DV.SIM.save_state()
 end
 
 function DV.SIM.simulate_play(type)
+   -- Clear `G.SEED` to prevent seed "scrambling", i.e. 'lucky_mult' -> 'lucky_mult127453'
+   G.SEED = ""
+
    DV.SIM.running_type = type
 
    DV.SIM.prepare_play()
@@ -177,24 +178,9 @@ function DV.SIM.prepare_play()
 end
 
 function DV.SIM.restore_state()
-   -- Restore real tables:
-
    G = DV.SIM.real.global
    for k, _ in pairs(DV.SIM.real.main) do
       G[k] = DV.SIM.real.main[k]
-   end
-
-   -- Clean-up:
-
-   if DV.SIM.DEBUG then
-      print("DATABASE SIZE: " .. get_length(DV.SIM.shadow.links))
-   end
-   for tbl, pt in pairs(DV.SIM.shadow.links) do
-      local pt_mt = getmetatable(pt)
-      if pt_mt.created_simulation_num ~= DV.SIM.total_simulations then
-         -- this table is no longer relevant, remove cached links
-         DV.SIM.shadow.links[tbl] = nil
-      end
    end
 
    DV.SIM.unhook_functions()
@@ -240,13 +226,13 @@ function DV.SIM.write_shadow_table(tbl, debug)
    if DV.SIM.shadow.links[tbl] then
       pt = DV.SIM.shadow.links[tbl]
       local pt_mt = getmetatable(pt)
-      if pt_mt.created_simulation_num == DV.SIM.total_simulations then
+      if pt_mt.creation_timestamp == DV.SIM.total_simulations then
          -- this table has been processed, don't continue
          -- may cause loops if continuing
          return pt
       end
 
-      pt_mt.created_simulation_num = DV.SIM.total_simulations
+      pt_mt.creation_timestamp = DV.SIM.total_simulations
    else
       pt = DV.SIM.create_shadow_table(tbl, debug)
    end
@@ -257,6 +243,10 @@ function DV.SIM.write_shadow_table(tbl, debug)
    -- BUT value update only affects the updated shadow table,
    -- without affecting any underlying shadow tables (shadowing).
    -- This should solve most possibilities for 'pointer hell'.
+   --
+   -- Some tables don't need shadows and can be ignored
+   -- to shrink shadow footprint and reduce processing.
+   -- Currently ignored are ui elements like 'children' and 'parent'
 
    for k, v in pairs(tbl) do
       -- Read above on why we ignore values, only writing shadow tables:
@@ -277,13 +267,51 @@ function DV.SIM.create_shadow_table(tbl, debug)
       pt_mt.__index = tbl
       pt_mt.is_shadow_table = true
       pt_mt.debug_orig = debug
-      pt_mt.created_simulation_num = DV.SIM.total_simulations
+      pt_mt.creation_timestamp = DV.SIM.total_simulations
       setmetatable(pt, pt_mt)
 
       DV.SIM.shadow.links[tbl] = pt
    end
 
    return pt
+end
+
+function DV.SIM.clean_up()
+   if DV.SIM.DEBUG then
+      print("DATABASE SIZE: " .. get_length(DV.SIM.shadow.links))
+   end
+
+   -- remove all uneeded elements to keep size of DV.SIM.shadow.links down
+   for tbl, pt in pairs(DV.SIM.shadow.links) do
+      local pt_mt = getmetatable(pt)
+      if pt_mt.creation_timestamp ~= DV.SIM.total_simulations then
+         -- this table is no longer relevant, remove cached links
+         DV.SIM.shadow.links[tbl] = nil
+      end
+   end
+
+   -- search for any "misplaced" shadows and clear them
+   DV.SIM.search_for_shadows(G)
+end
+
+function DV.SIM.search_for_shadows(tbl, debug)
+   -- keep track of previous tables to prevent looping
+   debug = debug or {}
+   debug[tbl] = true
+   for k, v in pairs(tbl) do
+      if type(v) == "table" then
+         -- get the real table from the shadow
+         local v_mt = getmetatable(v)
+         if v_mt and v_mt.is_shadow_table then
+            -- restore the proper links
+            tbl[k] = v_mt.__index
+         end
+
+         if debug[v] == nil then
+            DV.SIM.search_for_shadows(v, debug)
+         end
+      end
+   end
 end
 
 --
@@ -300,26 +328,18 @@ function DV.SIM.classify_seed(seed, prev_max)
    --   * Score is lower;
    --   * Score is unchanged, but money is lower;
    --   * No change.
+   local ret_max = new_max
    local score_diff = new_max.chips * new_max.mult - prev_max.chips * prev_max.mult
    if score_diff < 0 or (score_diff == 0 and new_max.dollars <= prev_max.dollars) then
+      -- The results are either unchanged or worse
+      -- Return the previous values and assume 'normal'
       DV.SIM.seeds.known[seed].inverted = false
+      ret_max = prev_max
    end
 
    DV.SIM.save_seed_json()
 
-   -- If seed yields better results when inverted, then the whole play should
-   -- be re-simulated with this new knowledge:
-   local recalculate = DV.SIM.seeds.known[seed].inverted
-   return new_max, recalculate
-end
-
--- Hook into pseudorandom() and pseudoseed() to force specific random results
-DV.SIM._pseudoseed = pseudoseed
-DV.SIM.new_pseudoseed = function(key, predict_seed)
-   if not DV.SIM.running or not G.SETTINGS.DV.show_min_max then
-      return DV.SIM._pseudoseed(key, predict_seed)
-   end
-   return key
+   return ret_max
 end
 
 DV.SIM._pseudorandom = pseudorandom
@@ -342,7 +362,7 @@ DV.SIM.new_pseudorandom = function(seed, min, max)
 end
 
 --
--- Utils:
+-- Util functions:
 --
 
 function get_length(tbl)

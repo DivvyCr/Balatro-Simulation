@@ -16,27 +16,10 @@ DV.SIM = {
    running_type = 0,
    total_simulations = 0,
 
-   -- Tables that should be shadowed:
-   MAIN_TABLES = {
-      "GAME",
-      "play",
-      "hand",
-      "jokers",
-      "consumeables",
-      "deck",
-   },
-
+   -- Tables to create shadow copies for:
+   MAIN_TABLES = { GAME = true, play = true, hand = true, jokers = true, consumeables = true, deck = true },
    -- Table keys that should not be shadowed (to preserve memory):
-   IGNORED_KEYS = {
-      "role",
-      "children",
-      "parent",
-      "alignment",
-      "ability_UIBox_table",
-      "h_popup",
-      "example",
-      "dissolve_colours",
-   },
+   IGNORED_KEYS = { role = true, children = true, parent = true, alignment = true, ability_UIBox_table = true, h_popup = true, example = true, dissolve_colours = true },
 
    real = {
       global = nil, -- Real global `G` table
