@@ -3,11 +3,24 @@
 -- Shadow the game's main tables to run simulations in an isolated environment.
 
 function DV.SIM.run()
-   local null_ret = {
-      score   = { min = 0, exact = 0, max = 0 },
-      dollars = { min = 0, exact = 0, max = 0 }
-   }
-   if #G.hand.highlighted < 1 then return null_ret end
+   if #G.hand.highlighted == 0 then
+      return {
+         score   = { min = 0, exact = 0, max = 0 },
+         dollars = { min = 0, exact = 0, max = 0 }
+      }
+   end
+   DV.SIM.waiting = true
+   return DV.PRE.data
+end
+
+function DV.SIM.begin_simulation()
+   if #G.hand.highlighted < 1 then
+      DV.PRE.data = {
+         score   = { min = 0, exact = 0, max = 0 },
+         dollars = { min = 0, exact = 0, max = 0 }
+      }
+      return true
+   end
 
    DV.SIM.total_simulations = 1 + (DV.SIM.total_simulations or 0)
 
@@ -47,10 +60,11 @@ function DV.SIM.run()
    local exact_score = math.floor(exact.chips * exact.mult)
    local max_score   = math.floor(max.chips * max.mult)
 
-   return {
+   DV.PRE.data       = {
       score   = { min = min_score, exact = exact_score, max = max_score },
       dollars = { min = min.dollars, exact = exact.dollars, max = max.dollars }
    }
+   return true
 end
 
 function DV.SIM.simulate_max()
