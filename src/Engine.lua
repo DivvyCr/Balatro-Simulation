@@ -389,6 +389,25 @@ function DV.SIM.classify_seed(seed, prev_max)
    return ret_max
 end
 
+-- Hook into pseudorandom() and pseudoseed() to force specific random results
+-- pseudoseed normally returns a number, but we'll return the seed string so that pseudorandom can read it raw
+--   However, pseudorandom_element needs the number, so we'll hook that as well
+DV.SIM._pseudoseed = pseudoseed
+DV.SIM.new_pseudoseed = function(key, predict_seed)
+   if not DV.SIM.running or not G.SETTINGS.DV.show_min_max then
+      return DV.SIM._pseudoseed(key, predict_seed)
+   end
+   return key
+end
+
+DV.SIM._pseudorandom_element = pseudorandom_element
+DV.SIM.new_pseudorandom_element = function(_t, seed)
+   if not DV.SIM.running or not G.SETTINGS.DV.show_min_max then
+      return DV.SIM._pseudorandom_element(_t, seed)
+   end
+   return DV.SIM._pseudorandom_element(_t, 0)
+end
+
 DV.SIM._pseudorandom = pseudorandom
 DV.SIM.new_pseudorandom = function(seed, min, max)
    if not DV.SIM.running or not G.SETTINGS.DV.show_min_max then
