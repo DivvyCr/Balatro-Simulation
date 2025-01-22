@@ -185,6 +185,7 @@ function DV.SIM.prepare_play()
    -- reset card positions for correct order
    for i, card in pairs(G.play.cards) do
       card.T.x = nil
+      --print("HAND #"..i.." - "..tostring(card.base and card.base.name).." / "..tostring(card.ability and card.ability.effect).." / "..tostring(card.edition and card.edition.type))
    end
    table.sort(G.play.cards, function(a, b) return a.T.x < b.T.x end)
 end
@@ -439,7 +440,7 @@ end
 
 function start_timer()
    --if DV.SIM.DEBUG then
-   DV.SIM.debug_data.t0 = love.timer.getTime()    -- Used at the end to get total simulation time!
+   DV.SIM.debug_data.t0 = love.timer.getTime() -- Used at the end to get total simulation time!
    DV.SIM.debug_data.t1 = DV.SIM.debug_data.t0
    --end
 end
@@ -447,7 +448,7 @@ end
 function debug_timer(msg)
    if DV.SIM.DEBUG then
       DV.SIM.debug_data.t2 = love.timer.getTime()
-      print(string.format("%s:  %.2fms", msg, 1000*(DV.SIM.debug_data.t2 - DV.SIM.debug_data.t1)))
+      print(string.format("%s:  %.2fms", msg, 1000 * (DV.SIM.debug_data.t2 - DV.SIM.debug_data.t1)))
       DV.SIM.debug_data.t1 = DV.SIM.debug_data.t2
    end
 end
@@ -455,6 +456,6 @@ end
 function stop_timer()
    --if DV.SIM.DEBUG then
    DV.SIM.debug_data.t2 = love.timer.getTime()
-   print(string.format("TOTAL SIMULATION TIME:  %.2fms", 1000*(DV.SIM.debug_data.t2 - DV.SIM.debug_data.t1)))
+   print(string.format("TOTAL SIMULATION TIME:  %.2fms", 1000 * (DV.SIM.debug_data.t2 - DV.SIM.debug_data.t1)))
    --end
 end
