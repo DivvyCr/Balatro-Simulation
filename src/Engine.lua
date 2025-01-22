@@ -200,55 +200,71 @@ function DV.SIM.restore_state()
    DV.SIM.unhook_functions()
 end
 
+-- To properly reset the shadow tables, we need to restore the
+-- links present in the normal tables. We saved links from normal
+-- table to shadow tables, so we can restore shadow to shadow links.
 function DV.SIM.reset_shadow_tables()
+   -- To simplify processing time, we'll keep shadow tables between
+   -- simulations. However, new cards/jokers could have been gained,
+   -- and their shadows need to be created. "to_create" stores their
+   -- information so that we can create them at the end of this function.
    local to_create = {}
-   for tbl, pt in pairs(DV.SIM.shadow.links) do
-      local mt = getmetatable(pt)
+   for tbl, st in pairs(DV.SIM.shadow.links) do
+      local mt = getmetatable(st)
       if rawget(mt, "is_shadow_table") == nil then
-         print("TABLE IN DV.SIM.shadow.links IS NOT PSEUDO TABLE - " .. rawget(mt, "debug_orig"))
+         -- This should never occur, but it's best to log it for troubleshooting, if it ever does
+         print("TABLE IN DV.SIM.shadow.links IS NOT SHADOW TABLE - " .. rawget(mt, "debug_orig"))
       end
 
-
-      for k, _ in pairs(pt) do
-         rawset(pt, k, nil)
+      -- First, clear all the values within the shadow table.
+      -- Then, find all the links to tables in the normal table.
+      -- If any of them don't have shadows, document it in to_create.
+      -- Finally, store any number indexes for ipairs functionality.
+      --       more details about ipairs is in the write_shadow_table function
+      for k, _ in pairs(st) do
+         rawset(st, k, nil)
       end
       for k, v in pairs(tbl) do
          if type(v) == "table" and not DV.SIM.IGNORED_KEYS[k] then
-            rawset(pt, k, DV.SIM.shadow.links[v])
-            if rawget(pt, k) == nil then
+            rawset(st, k, DV.SIM.shadow.links[v])
+            if rawget(st, k) == nil then
                local temp = {}
-               temp.tab = tbl
-               temp.pseudo = pt
+               temp.tbl = tbl
+               temp.shadow = st
                temp.key = k
                table.insert(to_create, temp)
             end
+         elseif type(k) == "number" then
+            rawset(st, k, v)
          end
       end
    end
+
+   -- Lastly, create the missing shadow tables
    for _, v in pairs(to_create) do
-      local tbl = v.tab
-      local pt = v.pseudo
+      local tbl = v.tbl
+      local st = v.shadow
       local k = v.key
-      rawset(pt, k, DV.SIM.write_shadow_table(tbl[k], "???." .. k))
+      rawset(st, k, DV.SIM.write_shadow_table(tbl[k], "???." .. k))
    end
 end
 
 function DV.SIM.write_shadow_table(tbl, debug)
    debug = debug or ""
-   local pt = nil
+   local st = nil
 
    if DV.SIM.shadow.links[tbl] then
-      pt = DV.SIM.shadow.links[tbl]
-      local pt_mt = getmetatable(pt)
-      if pt_mt.created_simulation_num == DV.SIM.total_simulations then
+      st = DV.SIM.shadow.links[tbl]
+      local st_mt = getmetatable(st)
+      if st_mt.last_simulation == DV.SIM.total_simulations then
          -- this table has been processed, don't continue
          -- may cause loops if continuing
-         return pt
+         return st
       end
 
-      pt_mt.created_simulation_num = DV.SIM.total_simulations
+      st_mt.last_simulation = DV.SIM.total_simulations
    else
-      pt = DV.SIM.create_shadow_table(tbl, debug)
+      st = DV.SIM.create_shadow_table(tbl, debug)
    end
 
    -- The key idea is that the `__index` metamethod in shadow tables
@@ -261,33 +277,52 @@ function DV.SIM.write_shadow_table(tbl, debug)
    -- Some tables don't need shadows and can be ignored
    -- to shrink shadow footprint and reduce processing.
    -- Currently ignored are ui elements like 'children' and 'parent'
+   --
+   -- However, pairs and ipairs don't fall through with Lua 5.1.
+   -- For most cases, this isn't an issues, but anytime a table
+   -- is used as an array, the changing of indexes causes weird cases.
+   -- To address this, no number keys will fall through.
 
    for k, v in pairs(tbl) do
       -- Read above on why we ignore values, only writing shadow tables:
       if type(v) == "table" and not DV.SIM.IGNORED_KEYS[k] then
-         pt[k] = DV.SIM.write_shadow_table(v, debug .. "." .. k)
+         st[k] = DV.SIM.write_shadow_table(v, debug .. "." .. k)
+      elseif type(k) == "number" then
+         st[k] = v
       end
    end
 
-   return pt
+   return st
 end
 
+-- Simply create an empty shadow table with the proper connections
+-- "debug" is the full location of the table, i.e. "G.hand.cards.1"
 function DV.SIM.create_shadow_table(tbl, debug)
-   local pt = DV.SIM.shadow.links[tbl]
+   local st = DV.SIM.shadow.links[tbl]
 
-   if pt == nil then
-      pt = {}
-      local pt_mt = {}
-      pt_mt.__index = tbl
-      pt_mt.is_shadow_table = true
-      pt_mt.debug_orig = debug
-      pt_mt.created_simulation_num = DV.SIM.total_simulations
-      setmetatable(pt, pt_mt)
+   if st == nil then
+      st = {}
+      local st_mt = {}
+      st_mt.real_table = tbl
+      st_mt.__index = DV.SIM.shadow_index
+      st_mt.is_shadow_table = true
+      st_mt.debug_orig = debug
+      st_mt.last_simulation = DV.SIM.total_simulations
+      setmetatable(st, st_mt)
 
-      DV.SIM.shadow.links[tbl] = pt
+      DV.SIM.shadow.links[tbl] = st
    end
 
-   return pt
+   return st
+end
+
+function DV.SIM.shadow_index(shadow, key)
+   if type(key) == "number" then return nil end
+   local shadow_mt = getmetatable(shadow)
+   if shadow_mt and shadow_mt.real_table then
+      return shadow_mt.real_table[key]
+   end
+   return nil
 end
 
 function DV.SIM.clean_up()
@@ -296,33 +331,31 @@ function DV.SIM.clean_up()
    end
 
    -- remove all uneeded elements to keep size of DV.SIM.shadow.links down
-   for tbl, pt in pairs(DV.SIM.shadow.links) do
-      local pt_mt = getmetatable(pt)
-      if pt_mt.created_simulation_num ~= DV.SIM.total_simulations then
-         -- this table is no longer relevant, remove cached links
+   for tbl, st in pairs(DV.SIM.shadow.links) do
+      local st_mt = getmetatable(st)
+      -- If this shadow table wasn't used in the most recent simulation, remove it
+      if st_mt.last_simulation ~= DV.SIM.total_simulations then
          DV.SIM.shadow.links[tbl] = nil
       end
    end
 
-   -- search for any "misplaced" shadows and clear them
-   DV.SIM.search_for_shadows(G)
+   -- search for any "misplaced" shadows and replace them with their real version
+   DV.SIM.replace_all_shadows(G)
 end
 
-function DV.SIM.search_for_shadows(tbl, debug)
+function DV.SIM.replace_all_shadows(tbl, debug)
    -- keep track of previous tables to prevent looping
    debug = debug or {}
    debug[tbl] = true
+   -- Check all values in a table, and replace any found shadows with the real version
    for k, v in pairs(tbl) do
       if type(v) == "table" then
-         -- get the real table from the shadow
          local v_mt = getmetatable(v)
          if v_mt and v_mt.is_shadow_table then
-            -- restore the proper links
-            tbl[k] = v_mt.__index
+            tbl[k] = v_mt.real_table
          end
-
          if debug[v] == nil then
-            DV.SIM.search_for_shadows(v, debug)
+            DV.SIM.replace_all_shadows(v, debug)
          end
       end
    end
