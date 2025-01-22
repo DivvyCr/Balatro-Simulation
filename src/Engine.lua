@@ -3,30 +3,29 @@
 -- Shadow the game's main tables to run simulations in an isolated environment.
 
 function DV.SIM.run()
-   if #G.hand.highlighted == 0 then
-      return {
-         score   = { min = 0, exact = 0, max = 0 },
-         dollars = { min = 0, exact = 0, max = 0 }
-      }
-   end
-   DV.SIM.waiting = true
-   return DV.PRE.data
-end
-
-function DV.SIM.begin_simulation()
-   if #G.hand.highlighted < 1 then
-      DV.PRE.data = {
-         score   = { min = 0, exact = 0, max = 0 },
-         dollars = { min = 0, exact = 0, max = 0 }
-      }
-      return true
+   local null_ret = {
+      score   = { min = 0, exact = 0, max = 0 },
+      dollars = { min = 0, exact = 0, max = 0 }
+   }
+   if #G.hand.highlighted < 1 then return null_ret end
+   if #G.play.cards > 0 then
+      G.E_MANAGER:add_event(Event({
+         trigger = "immediate",
+         func = function()
+            if #G.play.cards == 0 then
+               DV.PRE.data = DV.SIM.run()
+               return true
+            end
+            return false
+         end
+      }))
+      return DV.PRE.data
    end
 
    DV.SIM.total_simulations = 1 + (DV.SIM.total_simulations or 0)
 
    -- Simulation:
-   local t0 = love.timer.getTime() -- Used at the end to get total simulation time!
-   DV.SIM.debug_data.t1 = t0
+   start_timer()
 
    DV.SIM.running = true
    DV.SIM.save_state()
@@ -52,7 +51,7 @@ function DV.SIM.begin_simulation()
 
    DV.SIM.clean_up()
 
-   print("TOTAL SIMULATION TIME: " .. (DV.SIM.debug_data.t2 - t0))
+   stop_timer()
 
    -- Return:
 
@@ -60,11 +59,10 @@ function DV.SIM.begin_simulation()
    local exact_score = math.floor(exact.chips * exact.mult)
    local max_score   = math.floor(max.chips * max.mult)
 
-   DV.PRE.data       = {
+   return {
       score   = { min = min_score, exact = exact_score, max = max_score },
       dollars = { min = min.dollars, exact = exact.dollars, max = max.dollars }
    }
-   return true
 end
 
 function DV.SIM.simulate_max()
@@ -439,10 +437,24 @@ function get_length(tbl)
    return ret
 end
 
+function start_timer()
+   --if DV.SIM.DEBUG then
+   DV.SIM.debug_data.t0 = love.timer.getTime()    -- Used at the end to get total simulation time!
+   DV.SIM.debug_data.t1 = DV.SIM.debug_data.t0
+   --end
+end
+
 function debug_timer(msg)
    if DV.SIM.DEBUG then
       DV.SIM.debug_data.t2 = love.timer.getTime()
-      print(msg .. ": " .. (DV.SIM.debug_data.t2 - DV.SIM.debug_data.t1))
+      print(string.format("%s:  %.2fms", msg, 1000*(DV.SIM.debug_data.t2 - DV.SIM.debug_data.t1)))
       DV.SIM.debug_data.t1 = DV.SIM.debug_data.t2
    end
+end
+
+function stop_timer()
+   --if DV.SIM.DEBUG then
+   DV.SIM.debug_data.t2 = love.timer.getTime()
+   print(string.format("TOTAL SIMULATION TIME:  %.2fms", 1000*(DV.SIM.debug_data.t2 - DV.SIM.debug_data.t1)))
+   --end
 end
