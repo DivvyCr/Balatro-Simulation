@@ -240,13 +240,13 @@ function DV.SIM.write_shadow_table(tbl, debug)
    if DV.SIM.shadow.links[tbl] then
       pt = DV.SIM.shadow.links[tbl]
       local pt_mt = getmetatable(pt)
-      if pt_mt.creation_timestamp == DV.SIM.total_simulations then
+      if pt_mt.created_simulation_num == DV.SIM.total_simulations then
          -- this table has been processed, don't continue
          -- may cause loops if continuing
          return pt
       end
 
-      pt_mt.creation_timestamp = DV.SIM.total_simulations
+      pt_mt.created_simulation_num = DV.SIM.total_simulations
    else
       pt = DV.SIM.create_shadow_table(tbl, debug)
    end
@@ -281,7 +281,7 @@ function DV.SIM.create_shadow_table(tbl, debug)
       pt_mt.__index = tbl
       pt_mt.is_shadow_table = true
       pt_mt.debug_orig = debug
-      pt_mt.creation_timestamp = DV.SIM.total_simulations
+      pt_mt.created_simulation_num = DV.SIM.total_simulations
       setmetatable(pt, pt_mt)
 
       DV.SIM.shadow.links[tbl] = pt
@@ -298,7 +298,7 @@ function DV.SIM.clean_up()
    -- remove all uneeded elements to keep size of DV.SIM.shadow.links down
    for tbl, pt in pairs(DV.SIM.shadow.links) do
       local pt_mt = getmetatable(pt)
-      if pt_mt.creation_timestamp ~= DV.SIM.total_simulations then
+      if pt_mt.created_simulation_num ~= DV.SIM.total_simulations then
          -- this table is no longer relevant, remove cached links
          DV.SIM.shadow.links[tbl] = nil
       end
