@@ -7,6 +7,7 @@ if not DV then DV = {} end
 
 DV.SIM = {
    running = false,
+   waiting = false,
 
    TYPES = {
       EXACT = -1,
