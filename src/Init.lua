@@ -42,6 +42,7 @@ DV.SIM = {
    DEBUG = false,
    debug_data = {
       -- Time data for rough benchmarking:
+      t0 = 0,
       t1 = 0,
       t2 = 0,
    },
