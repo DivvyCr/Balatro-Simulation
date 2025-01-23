@@ -18,13 +18,13 @@ DV.SIM = {
    total_simulations = 0,
 
    -- Tables to create shadow copies for:
-   MAIN_TABLES = { GAME = true, play = true, hand = true, jokers = true, consumeables = true, deck = true },
+   MAIN_TABLES = { METRICS = true, GAME = true, play = true, hand = true, jokers = true, consumeables = true, deck = true, discard = true, playing_cards = true },
    -- Table keys that should not be shadowed (to preserve memory):
-   IGNORED_KEYS = { role = true, children = true, parent = true, alignment = true, ability_UIBox_table = true, h_popup = true, example = true, dissolve_colours = true },
+   IGNORED_KEYS = { role = true, children = true, parent = true, alignment = true, ability_UIBox_table = true, h_popup = true, example = true, dissolve_colours = true, FRAME = true },
 
    real = {
       global = nil, -- Real global `G` table
-      main = {GAME={}, play={}, hand={}, jokers={}, consumeables={}, deck={}, playing_cards={}}, -- Real game tables (from MAIN_TABLES)
+      main = {}, -- Real game tables (from MAIN_TABLES)
    },
 
    shadow = {
@@ -42,9 +42,8 @@ DV.SIM = {
    DEBUG = false,
    debug_data = {
       -- Time data for rough benchmarking:
-      t0 = 0,
-      t1 = 0,
-      t2 = 0,
+      t = {},
+      label = {},
    },
 }
 
@@ -81,4 +80,8 @@ end
 
 function DV.SIM.create_seed_json()
    return json.encode(DV.SIM.seeds.known)
+end
+
+function DV.SIM.create_json(tbl)
+   return json.encode(tbl)
 end
