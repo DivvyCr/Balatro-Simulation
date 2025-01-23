@@ -363,7 +363,7 @@ DV.SIM.new_pseudorandom_element = function(_t, seed)
    if not DV.SIM.running or not G.SETTINGS.DV.show_min_max then
       return DV.SIM._pseudorandom_element(_t, seed)
    end
-   return DV.SIM._pseudorandom_element(_t, 0)
+   return DV.SIM._pseudorandom_element(_t, DV.SIM._pseudoseed(seed))
 end
 
 DV.SIM._pseudorandom = pseudorandom
@@ -409,6 +409,11 @@ function debug_timer(msg)
    if DV.SIM.DEBUG then
       table.insert(DV.SIM.debug_data.t, love.timer.getTime())
       table.insert(DV.SIM.debug_data.label, msg)
+      if DV.SIM.DEBUG.immediate then
+         local i = #DV.SIM.debug_data.label
+         local diff = DV.SIM.debug_data.t[i] - DV.SIM.debug_data.t[i - 1]
+         print(string.format("%s:  %.2fms", DV.SIM.debug_data.label[i], 1000 * diff))
+      end
    end
 end
 
@@ -416,9 +421,11 @@ function stop_timer()
    --if DV.SIM.DEBUG then
    local finish = love.timer.getTime()
 
-   for i = 2, #DV.SIM.debug_data.t do
-      local diff = DV.SIM.debug_data.t[i] - DV.SIM.debug_data.t[i - 1]
-      print(string.format("%s:  %.2fms", DV.SIM.debug_data.label[i], 1000 * diff))
+   if DV.SIM.DEBUG and not DV.SIM.DEBUG.immediate then
+      for i = 2, #DV.SIM.debug_data.t do
+         local diff = DV.SIM.debug_data.t[i] - DV.SIM.debug_data.t[i - 1]
+         print(string.format("%s:  %.2fms", DV.SIM.debug_data.label[i], 1000 * diff))
+      end
    end
    print(string.format("TOTAL SIMULATION TIME:  %.2fms", 1000 * (finish - DV.SIM.debug_data.t[1])))
 
