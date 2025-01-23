@@ -374,19 +374,20 @@ end
 function start_timer()
    --if DV.SIM.DEBUG then
    print("SIMULATION #" .. DV.SIM.total_simulations .. " STARTING")
-   table.insert(DV.SIM.debug_data.t, love.timer.getTime())
-   table.insert(DV.SIM.debug_data.label, "START")
+   DV.SIM.debug_data.t0 = love.timer.getTime()
+   DV.SIM.debug_data.t1 = DV.SIM.debug_data.t0
    --end
 end
 
 function debug_timer(msg)
    if DV.SIM.DEBUG then
-      table.insert(DV.SIM.debug_data.t, love.timer.getTime())
-      table.insert(DV.SIM.debug_data.label, msg)
+      local time = love.timer.getTime()
       if DV.SIM.DEBUG.immediate then
-         local i = #DV.SIM.debug_data.label
-         local diff = DV.SIM.debug_data.t[i] - DV.SIM.debug_data.t[i - 1]
-         print(string.format("%s:  %.2fms", DV.SIM.debug_data.label[i], 1000 * diff))
+         print(string.format("%s:  %.2fms", msg, 1000 * (time - DV.SIM.debug_data.t1)))
+         DV.SIM.debug_data.t1 = time
+      else
+         table.insert(DV.SIM.debug_data.t, time)
+         table.insert(DV.SIM.debug_data.label, msg)
       end
    end
 end
@@ -396,14 +397,16 @@ function stop_timer()
    local finish = love.timer.getTime()
 
    if DV.SIM.DEBUG and not DV.SIM.DEBUG.immediate then
-      for i = 2, #DV.SIM.debug_data.t do
-         local diff = DV.SIM.debug_data.t[i] - DV.SIM.debug_data.t[i - 1]
+      local prev = DV.SIM.debug_data.t0
+      for i = 1, #DV.SIM.debug_data.t do
+         local diff = DV.SIM.debug_data.t[i] - prev
          print(string.format("%s:  %.2fms", DV.SIM.debug_data.label[i], 1000 * diff))
+         prev = DV.SIM.debug_data.t[i]
       end
+      DV.SIM.debug_data.t = {}
+      DV.SIM.debug_data.label = {}
    end
-   print(string.format("TOTAL SIMULATION TIME:  %.2fms", 1000 * (finish - DV.SIM.debug_data.t[1])))
 
-   DV.SIM.debug_data.t = {}
-   DV.SIM.debug_data.label = {}
+   print(string.format("TOTAL SIMULATION TIME:  %.2fms", 1000 * (finish - DV.SIM.debug_data.t0)))
    --end
 end
