@@ -47,6 +47,9 @@ function DV.SIM.hook_functions()
    --card_eval_status_text = DV.SIM.new_card_eval_status_text
    --update_hand_text = DV.SIM.new_update_hand_text
    if SMODS then
+      if DV.SIM._calculate_effect == nil then
+         DV.SIM._calculate_effect = SMODS.calculate_effect
+      end
       SMODS.calculate_effect = DV.SIM.new_calculate_effect
    end
 end
@@ -128,7 +131,6 @@ DV.SIM.new_card_eval_status_text = function(card, eval_type, amt, percent, dir, 
    --print("STOP THE new_card_eval_status_text")
 end
 
-DV.SIM._calculate_effect = (SMODS ~= nil) and SMODS.calculate_effect
 DV.SIM.new_calculate_effect = function(effect, scored_card, from_edition, pre_jokers)
    local calculated = false
    for k, amount in pairs(effect) do
