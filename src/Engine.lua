@@ -291,32 +291,6 @@ function DV.SIM.clean_up()
          DV.SIM.shadow.links[tbl] = nil
       end
    end
-
-   -- search for any "misplaced" shadows and replace them with their real version
-   --DV.SIM.replace_all_shadows(G.I.SPRITE, {}, "G.I.SPRITE")
-   --DV.SIM.replace_all_shadows(G)
-end
-
-function DV.SIM.replace_all_shadows(tbl, processed, location, debug)
-   -- keep track of previous tables to prevent looping
-   location = location or "G"
-   processed = processed or {}
-   processed[tbl] = true
-   -- Check all values in a table, and replace any found shadows with the real version
-   for k, v in pairs(tbl) do
-      if type(v) == "table" then
-         local v_mt = getmetatable(v)
-         if v_mt and v_mt.is_shadow_table then
-            if debug then
-               print("FOUND MISPLACED SHADOW: " .. location)
-            end
-            tbl[k] = v_mt.real_table
-         end
-         if processed[v] == nil then
-            DV.SIM.replace_all_shadows(v, processed, location .. "." .. k)
-         end
-      end
-   end
 end
 
 --

@@ -24,12 +24,12 @@ DV.SIM = {
 
    real = {
       global = nil, -- Real global `G` table
-      main = {}, -- Real game tables (from MAIN_TABLES)
+      main = {},    -- Real game tables (from MAIN_TABLES)
    },
 
    shadow = {
-      global = nil, -- Shadow global `G` table 
-      main = {GAME={}, play={}, hand={}, jokers={}, consumeables={}, deck={}, playing_cards={}}, -- Top-level shadow tables (from MAIN_TABLES)
+      global = nil, -- Shadow global `G` table
+      main = {},    -- Top-level shadow tables (from MAIN_TABLES)
       links = {},   -- Links to real_tables (links[real] = shadow)
    },
 
