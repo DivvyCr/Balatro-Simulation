@@ -39,12 +39,15 @@ DV.SIM = {
       save_loc = "",
    },
 
-   DEBUG = false,
+   DEBUG = true,
    debug_data = {
       -- Time data for rough benchmarking:
       t = {},
       label = {},
    },
+
+   -- deprecated
+   JOKERS = {},
 }
 
 
