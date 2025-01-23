@@ -39,7 +39,7 @@ DV.SIM = {
       save_loc = "",
    },
 
-   DEBUG = true,
+   --DEBUG = {immediate = true},
    debug_data = {
       -- Time data for rough benchmarking:
       t = {},
