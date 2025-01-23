@@ -22,19 +22,14 @@ function DV.SIM.run()
       return DV.PRE.data
    end
 
-   DV.SIM.total_simulations = 1 + (DV.SIM.total_simulations or 0)
-
    -- Simulation:
-   start_timer()
+   local min      = { chips = 0, mult = 0, dollars = 0 }
+   local exact    = { chips = 0, mult = 0, dollars = 0 }
+   local max      = { chips = 0, mult = 0, dollars = 0 }
 
    DV.SIM.running = true
-   DV.SIM.save_state()
 
-   debug_timer("SAVE STATE")
-
-   local min   = { chips = 0, mult = 0, dollars = 0 }
-   local exact = { chips = 0, mult = 0, dollars = 0 }
-   local max   = { chips = 0, mult = 0, dollars = 0 }
+   start_timer()
 
    if G.SETTINGS.DV.show_min_max then
       max = DV.SIM.simulate_max()
@@ -50,6 +45,8 @@ function DV.SIM.run()
    debug_timer("RESTORE STATE")
 
    DV.SIM.clean_up()
+
+   debug_timer("CLEAN UP")
 
    stop_timer()
 
@@ -113,41 +110,6 @@ function DV.SIM.simulate_min()
    return min
 end
 
-function DV.SIM.save_state()
-   DV.SIM.hook_functions()
-   -- Swap real global tables with simulation tables via `__index` metamethod;
-   -- see comment in `DV.SIM.write_shadow_table` for some details.
-   for k, _ in pairs(DV.SIM.real.main) do
-      DV.SIM.real.main[k] = G[k]
-      DV.SIM.shadow.main[k] = DV.SIM.write_shadow_table(DV.SIM.real.main[k], k)
-      G[k] = DV.SIM.shadow.main[k]
-   end
-
-   -- Most values in the `G` table aren't needed, so we can do a shadow copy
-   -- of just the important values and leave the rest as real references
-
-   -- Save the real `G` table:
-   DV.SIM.real.global = G
-
-   if DV.SIM.shadow.global then
-      -- Exists, so need to clear it:
-      for k, _ in pairs(DV.SIM.shadow.global) do
-         DV.SIM.shadow.global[k] = nil
-      end
-   else
-      -- Does not exist, so need to create it:
-      DV.SIM.shadow.global = DV.SIM.create_shadow_table(G, "G")
-      DV.SIM.shadow.links[G] = nil
-   end
-
-   -- Populate the shadow `G` table:
-   for k, v in pairs(DV.SIM.shadow.main) do
-      DV.SIM.shadow.global[k] = v
-   end
-   -- Shadow the `G` table:
-   G = DV.SIM.shadow.global
-end
-
 function DV.SIM.simulate_play(type)
    -- Clear `G.SEED` to prevent seed "scrambling", i.e. 'lucky_mult' -> 'lucky_mult127453'
    G.SEED = ""
@@ -155,7 +117,10 @@ function DV.SIM.simulate_play(type)
    DV.SIM.running_type = type
 
    DV.SIM.prepare_play()
+   debug_timer("PLAY PREPARED")
    G.FUNCS.evaluate_play()
+
+   DV.SIM.total_simulations = 1 + (DV.SIM.total_simulations or 0)
 
    local cash = G.GAME.dollars - DV.SIM.real.main.GAME.dollars
    return { chips = hand_chips, mult = mult, dollars = cash }
@@ -163,7 +128,8 @@ end
 
 -- The following function adjusts values as per `G.FUNCS.play_cards_from_highlighted(e)`
 function DV.SIM.prepare_play()
-   DV.SIM.reset_shadow_tables()
+   DV.SIM.save_state()
+   --debug_timer("SAVE STATE")
 
    local highlighted_cards = {}
    for i = 1, #G.hand.highlighted do
@@ -190,8 +156,45 @@ function DV.SIM.prepare_play()
    table.sort(G.play.cards, function(a, b) return a.T.x < b.T.x end)
 end
 
+function DV.SIM.save_state()
+   DV.SIM.hook_functions()
+
+   -- save G if not already saved
+   DV.SIM.real.global = DV.SIM.real.global or G
+   -- reset previous links
+   DV.SIM.shadow.links = DV.SIM.shadow.links or {}
+   for _, st in pairs(DV.SIM.shadow.links) do
+      local st_mt = getmetatable(st)
+      for k, _ in pairs(st) do
+         st[k] = nil
+      end
+   end
+
+   if DV.SIM.shadow.global then
+      -- Exists, so need to clear it:
+      for k, _ in pairs(DV.SIM.shadow.global) do
+         DV.SIM.shadow.global[k] = nil
+      end
+   else
+      -- Does not exist, so need to create it:
+      DV.SIM.shadow.global = DV.SIM.create_shadow_table(G, "G")
+      DV.SIM.shadow.links[G] = nil
+   end
+
+   for k, _ in pairs(DV.SIM.MAIN_TABLES) do
+      DV.SIM.real.main[k] = DV.SIM.real.global[k]
+      DV.SIM.shadow.main[k] = DV.SIM.fill_shadow_tables(DV.SIM.real.main[k], "G." .. k)
+      DV.SIM.shadow.global[k] = DV.SIM.shadow.main[k]
+   end
+
+   G = DV.SIM.shadow.global
+end
+
 function DV.SIM.restore_state()
    G = DV.SIM.real.global
+
+   -- Shouldn't be needed, as the links should already exist, but best to be safe
+   --    plus it's only a few assignments
    for k, _ in pairs(DV.SIM.real.main) do
       G[k] = DV.SIM.real.main[k]
    end
@@ -199,105 +202,25 @@ function DV.SIM.restore_state()
    DV.SIM.unhook_functions()
 end
 
--- To properly reset the shadow tables, we need to restore the
--- links present in the normal tables. We saved links from normal
--- table to shadow tables, so we can restore shadow to shadow links.
-function DV.SIM.reset_shadow_tables()
-   -- To simplify processing time, we'll keep shadow tables between
-   -- simulations. However, new cards/jokers could have been gained,
-   -- and their shadows need to be created. "to_create" stores their
-   -- information so that we can create them at the end of this function.
-   local to_create = {}
-   for tbl, st in pairs(DV.SIM.shadow.links) do
-      local mt = getmetatable(st)
-      if rawget(mt, "is_shadow_table") == nil then
-         -- This should never occur, but it's best to log it for troubleshooting, if it ever does
-         print("TABLE IN DV.SIM.shadow.links IS NOT SHADOW TABLE - " .. rawget(mt, "debug_orig"))
-      end
-
-      -- First, clear all the values within the shadow table.
-      -- Then, find all the links to tables in the normal table.
-      -- If any of them don't have shadows, document it in to_create.
-      -- Finally, store any number indexes for ipairs functionality.
-      --       more details about ipairs is in the write_shadow_table function
-      for k, _ in pairs(st) do
-         rawset(st, k, nil)
-      end
-      for k, v in pairs(tbl) do
-         if type(v) == "table" and not DV.SIM.IGNORED_KEYS[k] then
-            rawset(st, k, DV.SIM.shadow.links[v])
-            if rawget(st, k) == nil then
-               local temp = {}
-               temp.tbl = tbl
-               temp.shadow = st
-               temp.key = k
-               table.insert(to_create, temp)
-            end
-         elseif type(k) == "number" then
-            rawset(st, k, v)
-         end
-      end
-   end
-
-   -- Lastly, create the missing shadow tables
-   for _, v in pairs(to_create) do
-      local tbl = v.tbl
-      local st = v.shadow
-      local k = v.key
-      rawset(st, k, DV.SIM.write_shadow_table(tbl[k], "???." .. k))
-   end
-end
-
-function DV.SIM.write_shadow_table(tbl, debug)
-   debug = debug or ""
-   local st = nil
-
-   if DV.SIM.shadow.links[tbl] then
-      st = DV.SIM.shadow.links[tbl]
-      local st_mt = getmetatable(st)
-      if st_mt.last_simulation == DV.SIM.total_simulations then
-         -- this table has been processed, don't continue
-         -- may cause loops if continuing
-         return st
-      end
-
-      st_mt.last_simulation = DV.SIM.total_simulations
-   else
-      st = DV.SIM.create_shadow_table(tbl, debug)
-   end
-
-   -- The key idea is that the `__index` metamethod in shadow tables
-   -- allows value look-up in any underlying shadow table (fall-through);
-   --
-   -- BUT value update only affects the updated shadow table,
-   -- without affecting any underlying shadow tables (shadowing).
-   -- This should solve most possibilities for 'pointer hell'.
-   --
-   -- Some tables don't need shadows and can be ignored
-   -- to shrink shadow footprint and reduce processing.
-   -- Currently ignored are ui elements like 'children' and 'parent'
-   --
-   -- However, pairs and ipairs don't fall through with Lua 5.1.
-   -- For most cases, this isn't an issues, but anytime a table
-   -- is used as an array, the changing of indexes causes weird cases.
-   -- To address this, no number keys will fall through.
-
-   for k, v in pairs(tbl) do
-      -- Read above on why we ignore values, only writing shadow tables:
-      if type(v) == "table" and not DV.SIM.IGNORED_KEYS[k] then
-         st[k] = DV.SIM.write_shadow_table(v, debug .. "." .. k)
-      elseif type(k) == "number" then
-         st[k] = v
-      end
-   end
-
-   return st
-end
-
 -- Simply create an empty shadow table with the proper connections
 -- "debug" is the full location of the table, i.e. "G.hand.cards.1"
 function DV.SIM.create_shadow_table(tbl, debug)
    local st = DV.SIM.shadow.links[tbl]
+
+   -- The key idea is that the `__index` metamethod in shadow tables
+   -- allows value look-up in any underlying shadow table (fall-through);
+   --
+   -- BUT setting values (i.e. tbl[key] = value) affect the shadown table,
+   -- and don't make it to the real tables underneath, keeping it unchanged.
+   -- This should solve most possibilities for 'pointer hell'.
+   --
+   -- However, pairs and ipairs don't fall through with Lua 5.1.
+   -- For most cases, this isn't an issues, but anytime a table
+   -- is used as an array, the changing of indexes causes weird cases.
+   --
+   -- To address this, we'll create a custom __index function that doesn't
+   -- send array requests (type(key) == "number") through to the real table.
+   -- Also, we'll copy over any array index values, so the shadow has the values.
 
    if st == nil then
       st = {}
@@ -315,6 +238,9 @@ function DV.SIM.create_shadow_table(tbl, debug)
    return st
 end
 
+-- This will be our custom __index function
+-- When called, it will be given the shadow table, and the index
+--   i.e. tbl[k] => DV.SIM.shadow_index(tbl,k)
 function DV.SIM.shadow_index(shadow, key)
    if type(key) == "number" then return nil end
    local shadow_mt = getmetatable(shadow)
@@ -324,9 +250,37 @@ function DV.SIM.shadow_index(shadow, key)
    return nil
 end
 
+-- recursively do a deep copy of the shadow tables
+-- Shadow tables will be initially nil, as the DV.SIM.shadow.links was reset
+function DV.SIM.fill_shadow_tables(tbl, debug)
+   debug = debug or ""
+   local st = DV.SIM.shadow.links[tbl]
+   if st then
+      local st_mt = getmetatable(st)
+      if st_mt.last_simulation == DV.SIM.total_simulations then
+         return st
+      end
+      st_mt.last_simulation = DV.SIM.total_simulations
+   else
+      st = DV.SIM.create_shadow_table(tbl, debug)
+   end
+
+   local is_basic = true
+   for k, v in pairs(tbl) do
+      if type(v) == "table" and not DV.SIM.IGNORED_KEYS[k] then
+         is_basic = false
+         st[k] = DV.SIM.fill_shadow_tables(v, debug .. "." .. k)
+      elseif type(k) == "number" then
+         st[k] = v
+      end
+   end
+
+   return st
+end
+
 function DV.SIM.clean_up()
    if DV.SIM.DEBUG then
-      print("DATABASE SIZE: " .. get_length(DV.SIM.shadow.links))
+      --print("DATABASE SIZE: " .. get_length(DV.SIM.shadow.links))
    end
 
    -- remove all uneeded elements to keep size of DV.SIM.shadow.links down
@@ -339,22 +293,27 @@ function DV.SIM.clean_up()
    end
 
    -- search for any "misplaced" shadows and replace them with their real version
-   DV.SIM.replace_all_shadows(G)
+   --DV.SIM.replace_all_shadows(G.I.SPRITE, {}, "G.I.SPRITE")
+   --DV.SIM.replace_all_shadows(G)
 end
 
-function DV.SIM.replace_all_shadows(tbl, debug)
+function DV.SIM.replace_all_shadows(tbl, processed, location, debug)
    -- keep track of previous tables to prevent looping
-   debug = debug or {}
-   debug[tbl] = true
+   location = location or "G"
+   processed = processed or {}
+   processed[tbl] = true
    -- Check all values in a table, and replace any found shadows with the real version
    for k, v in pairs(tbl) do
       if type(v) == "table" then
          local v_mt = getmetatable(v)
          if v_mt and v_mt.is_shadow_table then
+            if debug then
+               print("FOUND MISPLACED SHADOW: " .. location)
+            end
             tbl[k] = v_mt.real_table
          end
-         if debug[v] == nil then
-            DV.SIM.replace_all_shadows(v, debug)
+         if processed[v] == nil then
+            DV.SIM.replace_all_shadows(v, processed, location .. "." .. k)
          end
       end
    end
@@ -440,22 +399,30 @@ end
 
 function start_timer()
    --if DV.SIM.DEBUG then
-   DV.SIM.debug_data.t0 = love.timer.getTime() -- Used at the end to get total simulation time!
-   DV.SIM.debug_data.t1 = DV.SIM.debug_data.t0
+   print("SIMULATION #" .. DV.SIM.total_simulations .. " STARTING")
+   table.insert(DV.SIM.debug_data.t, love.timer.getTime())
+   table.insert(DV.SIM.debug_data.label, "START")
    --end
 end
 
 function debug_timer(msg)
    if DV.SIM.DEBUG then
-      DV.SIM.debug_data.t2 = love.timer.getTime()
-      print(string.format("%s:  %.2fms", msg, 1000 * (DV.SIM.debug_data.t2 - DV.SIM.debug_data.t1)))
-      DV.SIM.debug_data.t1 = DV.SIM.debug_data.t2
+      table.insert(DV.SIM.debug_data.t, love.timer.getTime())
+      table.insert(DV.SIM.debug_data.label, msg)
    end
 end
 
 function stop_timer()
    --if DV.SIM.DEBUG then
-   DV.SIM.debug_data.t2 = love.timer.getTime()
-   print(string.format("TOTAL SIMULATION TIME:  %.2fms", 1000 * (DV.SIM.debug_data.t2 - DV.SIM.debug_data.t1)))
+   local finish = love.timer.getTime()
+
+   for i = 2, #DV.SIM.debug_data.t do
+      local diff = DV.SIM.debug_data.t[i] - DV.SIM.debug_data.t[i - 1]
+      print(string.format("%s:  %.2fms", DV.SIM.debug_data.label[i], 1000 * diff))
+   end
+   print(string.format("TOTAL SIMULATION TIME:  %.2fms", 1000 * (finish - DV.SIM.debug_data.t[1])))
+
+   DV.SIM.debug_data.t = {}
+   DV.SIM.debug_data.label = {}
    --end
 end
