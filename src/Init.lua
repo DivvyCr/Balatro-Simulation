@@ -7,7 +7,7 @@ if not DV then DV = {} end
 
 DV.SIM = {
    running = false,
-   waiting = false,
+   store_events = nil,
 
    TYPES = {
       EXACT = -1,

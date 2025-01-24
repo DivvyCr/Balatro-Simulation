@@ -130,30 +130,48 @@ end
 function DV.SIM.prepare_play()
    DV.SIM.save_state()
    --DV.SIM.debug_timer("SAVE STATE")
+   DV.SIM.store_events = {}
 
-   local highlighted_cards = {}
+   G.GAME.current_round.hands_left = G.GAME.current_round.hands_left - 1
+   G.GAME.hands_played = G.GAME.hands_played + 1
+   G.GAME.current_round.hands_played = G.GAME.current_round.hands_played + 1
+
+   G.GAME.blind.triggered = false
+   for k, v in ipairs(G.playing_cards) do
+      v.ability.forced_selection = nil
+   end
+
+   table.sort(G.hand.highlighted, function(a, b) return a.T.x < b.T.x end)
+
    for i = 1, #G.hand.highlighted do
-      highlighted_cards[i] = G.hand.highlighted[i]
-      highlighted_cards[i].T.x = nil
-   end
-
-   table.sort(highlighted_cards, function(a, b) return a.T.x < b.T.x end)
-
-   for i = 1, #highlighted_cards do
-      local card = highlighted_cards[i]
-      card.base.times_played = card.base.times_played + 1
-      card.ability.played_this_ante = true
+      G.hand.highlighted[i].base.times_played = G.hand.highlighted[i].base.times_played + 1
+      G.hand.highlighted[i].ability.played_this_ante = true
       G.GAME.round_scores.cards_played.amt = G.GAME.round_scores.cards_played.amt + 1
-      G.hand:remove_card(card)
-      G.play:emplace(card)
+      draw_card(G.hand, G.play, i * 100 / #G.hand.highlighted, 'up', nil, G.hand.highlighted[i])
    end
 
-   -- reset card positions for correct order
-   for i, card in pairs(G.play.cards) do
-      card.T.x = nil
-      --print("HAND #"..i.." - "..tostring(card.base and card.base.name).." / "..tostring(card.ability and card.ability.effect).." / "..tostring(card.edition and card.edition.type))
+   -- draw_card create events to actually move the cards over
+   -- after creating them, trigger them all
+   local temp = DV.SIM.store_events
+   DV.SIM.store_events = nil
+   if #temp > 0 then
+      for _, event in pairs(temp) do
+         event.func()
+      end
    end
-   table.sort(G.play.cards, function(a, b) return a.T.x < b.T.x end)
+
+   DV.SIM.store_events = {}
+   -- trigger blind effects
+   G.GAME.blind:press_play()
+
+   -- Just like draw_card, press_play creates events to trigger the blind effect
+   local temp = DV.SIM.store_events
+   DV.SIM.store_events = nil
+   if #temp > 0 then
+      for _, event in pairs(temp) do
+         event.func()
+      end
+   end
 end
 
 function DV.SIM.save_state()

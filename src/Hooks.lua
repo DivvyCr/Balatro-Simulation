@@ -50,6 +50,9 @@ DV.SIM.new_add_event = function(self, event, queue, front)
    if not DV.SIM.running then
       return DV.SIM._add_event(self, event, queue, front)
    end
+   if DV.SIM.store_events and event.func then
+      table.insert(DV.SIM.store_events, event)
+   end
 end
 
 DV.SIM._ease_dollars = ease_dollars
