@@ -29,26 +29,26 @@ function DV.SIM.run()
 
    DV.SIM.running = true
 
-   start_timer()
+   DV.SIM.start_timer()
 
    if G.SETTINGS.DV.show_min_max then
       max = DV.SIM.simulate_max()
       min = DV.SIM.simulate_min()
    else
       exact = DV.SIM.simulate_play(DV.SIM.TYPES.EXACT)
-      debug_timer("SIM EXACT")
+      DV.SIM.debug_timer("SIM EXACT")
    end
 
    DV.SIM.restore_state()
    DV.SIM.running = false
 
-   debug_timer("RESTORE STATE")
+   DV.SIM.debug_timer("RESTORE STATE")
 
    DV.SIM.clean_up()
 
-   debug_timer("CLEAN UP")
+   DV.SIM.debug_timer("CLEAN UP")
 
-   stop_timer()
+   DV.SIM.stop_timer()
 
    -- Return:
 
@@ -64,7 +64,7 @@ end
 
 function DV.SIM.simulate_max()
    local max = DV.SIM.simulate_play(DV.SIM.TYPES.MAX)
-   debug_timer("SIM MAX")
+   DV.SIM.debug_timer("SIM MAX")
 
    -- Random events use different custom seeds, which are usually short strings
    -- like "lucky_money" and "lucky_mult" for lucky card triggers.
@@ -99,14 +99,14 @@ function DV.SIM.simulate_max()
       -- No additional simulations are needed.
       max = DV.SIM.classify_seed(seed, max)
 
-      debug_timer("SIM SEED (" .. seed .. ") MAX")
+      DV.SIM.debug_timer("SIM SEED (" .. seed .. ") MAX")
    end
    return max
 end
 
 function DV.SIM.simulate_min()
    local min = DV.SIM.simulate_play(DV.SIM.TYPES.MIN)
-   debug_timer("SIM MIN")
+   DV.SIM.debug_timer("SIM MIN")
    return min
 end
 
@@ -117,7 +117,7 @@ function DV.SIM.simulate_play(type)
    DV.SIM.running_type = type
 
    DV.SIM.prepare_play()
-   debug_timer("PLAY PREPARED")
+   DV.SIM.debug_timer("PLAY PREPARED")
    G.FUNCS.evaluate_play()
 
    DV.SIM.total_simulations = 1 + (DV.SIM.total_simulations or 0)
@@ -129,7 +129,7 @@ end
 -- The following function adjusts values as per `G.FUNCS.play_cards_from_highlighted(e)`
 function DV.SIM.prepare_play()
    DV.SIM.save_state()
-   --debug_timer("SAVE STATE")
+   --DV.SIM.debug_timer("SAVE STATE")
 
    local highlighted_cards = {}
    for i = 1, #G.hand.highlighted do
@@ -280,7 +280,7 @@ end
 
 function DV.SIM.clean_up()
    if DV.SIM.DEBUG then
-      --print("DATABASE SIZE: " .. get_length(DV.SIM.shadow.links))
+      --print("DATABASE SIZE: " .. DV.SIM.get_length(DV.SIM.shadow.links))
    end
 
    -- remove all uneeded elements to keep size of DV.SIM.shadow.links down
@@ -357,56 +357,4 @@ DV.SIM.new_pseudorandom = function(seed, min, max)
       return (DV.SIM.running_type == DV.SIM.TYPES.MAX and max) or min
    end
    return (DV.SIM.running_type == DV.SIM.TYPES.MAX and min) or max
-end
-
---
--- Util functions:
---
-
-function get_length(tbl)
-   local ret = 0
-   for _, _ in pairs(tbl) do
-      ret = ret + 1
-   end
-   return ret
-end
-
-function start_timer()
-   --if DV.SIM.DEBUG then
-   print("SIMULATION #" .. DV.SIM.total_simulations .. " STARTING")
-   DV.SIM.debug_data.t0 = love.timer.getTime()
-   DV.SIM.debug_data.t1 = DV.SIM.debug_data.t0
-   --end
-end
-
-function debug_timer(msg)
-   if DV.SIM.DEBUG then
-      local time = love.timer.getTime()
-      if DV.SIM.DEBUG.immediate then
-         print(string.format("%s:  %.2fms", msg, 1000 * (time - DV.SIM.debug_data.t1)))
-         DV.SIM.debug_data.t1 = time
-      else
-         table.insert(DV.SIM.debug_data.t, time)
-         table.insert(DV.SIM.debug_data.label, msg)
-      end
-   end
-end
-
-function stop_timer()
-   --if DV.SIM.DEBUG then
-   local finish = love.timer.getTime()
-
-   if DV.SIM.DEBUG and not DV.SIM.DEBUG.immediate then
-      local prev = DV.SIM.debug_data.t0
-      for i = 1, #DV.SIM.debug_data.t do
-         local diff = DV.SIM.debug_data.t[i] - prev
-         print(string.format("%s:  %.2fms", DV.SIM.debug_data.label[i], 1000 * diff))
-         prev = DV.SIM.debug_data.t[i]
-      end
-      DV.SIM.debug_data.t = {}
-      DV.SIM.debug_data.label = {}
-   end
-
-   print(string.format("TOTAL SIMULATION TIME:  %.2fms", 1000 * (finish - DV.SIM.debug_data.t0)))
-   --end
 end

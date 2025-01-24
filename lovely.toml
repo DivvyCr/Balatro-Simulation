@@ -20,7 +20,7 @@ sources = [ "Init.lua" ]
 [patches.copy]
 target = "functions/common_events.lua"
 position = "append"
-sources = [ "Engine.lua" ]
+sources = [ "Engine.lua", "Utils.lua" ]
 
 
 [[patches]]

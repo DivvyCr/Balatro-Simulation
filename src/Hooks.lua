@@ -88,13 +88,6 @@ DV.SIM.new_attention_text = function(args)
    end
 end
 
-DV.SIM._update_hand_text = update_hand_text
-DV.SIM.new_update_hand_text = function(config, vals)
-   if not DV.SIM.running then
-      return DV.SIM._update_hand_text(config, vals)
-   end
-end
-
 DV.SIM._card_eval_status_text = card_eval_status_text
 DV.SIM.new_card_eval_status_text = function(card, eval_type, amt, percent, dir, extra)
    if not DV.SIM.running then
