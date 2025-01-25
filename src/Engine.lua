@@ -355,7 +355,10 @@ DV.SIM.new_pseudorandom_element = function(_t, seed)
    if not DV.SIM.running or not G.SETTINGS.DV.show_min_max then
       return DV.SIM._pseudorandom_element(_t, seed)
    end
-   return DV.SIM._pseudorandom_element(_t, DV.SIM._pseudoseed(seed))
+   if seed then
+      seed = DV.SIM._pseudoseed(seed)
+   end
+   return DV.SIM._pseudorandom_element(_t, seed)
 end
 
 DV.SIM._pseudorandom = pseudorandom
