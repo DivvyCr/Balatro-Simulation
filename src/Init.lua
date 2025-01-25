@@ -1,6 +1,7 @@
 --- Divvy's Simulation for Balatro - Init.lua
 --
 -- Global values that must be present for the rest of this mod to work.
+
 local json = require "json"
 
 if not DV then DV = {} end
@@ -48,6 +49,9 @@ DV.SIM = {
       label = {},
    },
 
+   channels = {},
+   thread = nil,
+
    -- deprecated
    JOKERS = {},
 }
@@ -56,23 +60,55 @@ DV.SIM = {
 DV.SIM._start_up = Game.start_up
 function Game:start_up()
    local temp = { DV.SIM._start_up(self) }
+   DV.SIM.setup_realms()
+   return unpack(temp)
+end
+
+function DV.SIM.setup_realms()
+   DV.SIM.channels.main = love.thread.getChannel("DV_SIMULATE_TO_MAIN")
+   DV.SIM.channels.shadow = love.thread.getChannel("DV_SIMULATE_TO_SHADOW")
+
+   DV.SIM._love_update = love.update
+   love.update = DV.SIM.love_update
+
    local filesystem = NFS or love.filesystem
 
    for _, mod in pairs(SMODS.Mods) do
       if mod.display_name == "DVSimulate" then
-         DV.SIM.seeds.save_loc = mod.path .. "/seeds.json"
-         local file_content, err = filesystem.read(DV.SIM.seeds.save_loc)
-         if file_content == nil then
-            print("CAN'T READ: " .. tostring(err))
+         if not love.IS_SHADOW_REALM then
+            local new_main_path = mod.path .. "new_main.lua"
+            local data, err = filesystem.read(new_main_path)
+            if not data then
+               print("ERROR LOADING THREAD: " .. tostring(err))
+               -- Don't save it from crash, just cause it with a message
+            end
+            DV.SIM.thread = love.thread.newThread(data)
+            DV.SIM.thread:start(require("lovely"))
+
+            DV.SIM.channels.shadow:push("INIT BEGUN")
          else
-            local new_seeds = json.decode(file_content)
-            for seed, tbl in pairs(new_seeds) do
-               DV.SIM.seeds.known[seed] = tbl
+            local msg = DV.SIM.channels.shadow:pop()
+            if msg then
+               print("RECEIVED INIT MESSAGE: " .. tostring(msg))
+            else
+               print("DIDN'T RECEIVE INIT MESSAGE")
+            end
+
+            DV.SIM.seeds.save_loc = mod.path .. "seeds.json"
+            local file_content, err = filesystem.read(DV.SIM.seeds.save_loc)
+            if file_content == nil then
+               print("CAN'T READ: " .. tostring(err))
+               -- save from this crash, since we can run with it blank
+            else
+               local new_seeds = json.decode(file_content)
+               for seed, tbl in pairs(new_seeds) do
+                  DV.SIM.seeds.known[seed] = tbl
+               end
             end
          end
+         return
       end
    end
-   return unpack(temp)
 end
 
 function DV.SIM.save_seed_json()
