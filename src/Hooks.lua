@@ -18,12 +18,6 @@ function DV.SIM.hook_functions()
    --attention_text = DV.SIM.new_attention_text
    --card_eval_status_text = DV.SIM.new_card_eval_status_text
    --update_hand_text = DV.SIM.new_update_hand_text
-   if SMODS then
-      if DV.SIM._calculate_effect == nil then
-         DV.SIM._calculate_effect = SMODS.calculate_effect
-      end
-      SMODS.calculate_effect = DV.SIM.new_calculate_effect
-   end
 end
 
 function DV.SIM.unhook_functions()
@@ -40,9 +34,6 @@ function DV.SIM.unhook_functions()
    --attention_text = DV.SIM._attention_text
    --card_eval_status_text = DV.SIM._card_eval_status_text
    --update_hand_text = DV.SIM._update_hand_text
-   if SMODS then
-      SMODS.calculate_effect = DV.SIM._calculate_effect
-   end
 end
 
 DV.SIM._add_event = EventManager.add_event
