@@ -4,6 +4,9 @@
 
 local DVSJ = DV.SIM.JOKERS
 
+-- Simple guard against loading multiple times, using first function below:
+if DVSJ.simulate_mp_defensive_joker then return end
+
 DVSJ.simulate_mp_defensive_joker= function(joker_obj, context)
    if context.cardarea == G.jokers and context.global then
       DV.SIM.add_chips(joker_obj.ability.t_chips)

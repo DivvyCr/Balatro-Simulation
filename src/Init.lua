@@ -4,9 +4,14 @@
 
 if not DV then DV = {} end
 
+if DV.SIM then
+   print("Divvy's Simulation already loaded!")
+   return
+end
+
 DV.SIM = {
    JOKERS = {},
-   
+
    running = {
       --- Table to store workings (ie. running totals):
       min   = {chips = 0, mult = 0, dollars = 0},
