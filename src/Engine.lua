@@ -2,6 +2,9 @@
 --
 -- The heart of this library: it replicates the game's score evaluation.
 
+-- Simple guard against loading multiple times, using first function below:
+if DV.SIM.run then return end
+
 function DV.SIM.run()
    local null_ret = {score = {min=0, exact=0, max=0}, dollars = {min=0, exact=0, max=0}}
    if #G.hand.highlighted < 1 then return null_ret end

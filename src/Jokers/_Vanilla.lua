@@ -4,6 +4,9 @@
 
 local DVSJ = DV.SIM.JOKERS
 
+-- Simple guard against loading multiple times, using first function below:
+if DVSJ.simulate_joker then return end
+
 DVSJ.simulate_joker = function(joker_obj, context)
    if context.cardarea == G.jokers and context.global then
       DV.SIM.add_mult(joker_obj.ability.mult)

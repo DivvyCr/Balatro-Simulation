@@ -7,6 +7,9 @@
 -- These functions ensure that the score calculation remains identical to the
 -- game; DO NOT directly modify the `DV.SIM.running` score variables.
 
+-- Simple guard against loading multiple times, using first function below:
+if DV.SIM.JOKERS.add_suit_mult then return end
+
 --
 -- HIGH-LEVEL:
 --
