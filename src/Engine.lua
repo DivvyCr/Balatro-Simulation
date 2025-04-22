@@ -317,7 +317,9 @@ function DV.SIM.simulate_blind_debuffs()
       return false -- IMPORTANT: Avoid duplicate effects from Blind:debuff_hand() below
    end
 
-   return blind_obj:debuff_hand(DV.SIM.env.played_cards, DV.SIM.env.poker_hands, DV.SIM.env.scoring_name, true)
+   -- IMPORTANT: Use `G.hand.highlighted` instead of `DV.SIM.env.played_cards`,
+   -- in order to provide all relevant card metadata. (Only broken due to Steamodded?)
+   return blind_obj:debuff_hand(G.hand.highlighted, DV.SIM.env.poker_hands, DV.SIM.env.scoring_name, true)
 end
 
 --
