@@ -33,5 +33,6 @@ sources = [
 target = "card.lua"
 position = "append"
 sources = [
-  "Jokers/_Vanilla.lua"
+  "Jokers/_Vanilla.lua",
+  "Jokers/Multiplayer.lua",
 ]
