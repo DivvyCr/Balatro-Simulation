@@ -548,8 +548,11 @@ if not DVSJ.simulate_joker then
   end
   DVSJ.simulate_bull = function(joker_obj, context)
      if context.cardarea == G.jokers and context.global then
+        -- CAUTION: Modifying DV.SIM.running directly! Special care must be taken wrt. Talisman,
+        -- because we are assuming that DV.SIM.running deals with primitive numbers only!
+
         local function bull(data)
-           return joker_obj.ability.extra * math.max(0, G.GAME.dollars + data.dollars)
+           return DV.SIM.to_number(joker_obj.ability.extra) * math.max(0, DV.SIM.to_number(G.GAME.dollars) + data.dollars)
         end
         local min_chips = bull(DV.SIM.running.min)
         local exact_chips = bull(DV.SIM.running.exact)
@@ -906,8 +909,11 @@ if not DVSJ.simulate_joker then
   end
   DVSJ.simulate_bootstraps = function(joker_obj, context)
      if context.cardarea == G.jokers and context.global then
+        -- CAUTION: Modifying DV.SIM.running directly! Special care must be taken wrt. Talisman,
+        -- because we are assuming that DV.SIM.running deals with primitive numbers only!
+
         local function bootstraps(data)
-           return joker_obj.ability.extra.mult * math.floor((G.GAME.dollars + data.dollars) / joker_obj.ability.extra.dollars)
+           return DV.SIM.to_number(joker_obj.ability.extra.mult) * math.floor((DV.SIM.to_number(G.GAME.dollars) + data.dollars) / DV.SIM.to_number(joker_obj.ability.extra.dollars))
         end
         local min_mult = bootstraps(DV.SIM.running.min)
         local exact_mult = bootstraps(DV.SIM.running.exact)

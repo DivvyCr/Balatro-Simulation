@@ -235,6 +235,9 @@ if not DV.SIM.run then
      if G.GAME.blind.disabled then return end
 
      if G.GAME.blind.name == "The Flint" then
+        -- CAUTION: Modifying DV.SIM.running directly! Special care must be taken wrt. Talisman,
+        -- because we are assuming that DV.SIM.running deals with primitive numbers only!
+
         local function flint(data)
            local half_chips = math.floor(data.chips/2 + 0.5)
            local half_mult = math.floor(data.mult/2 + 0.5)
@@ -252,6 +255,9 @@ if not DV.SIM.run then
 
   function DV.SIM.simulate_deck_effects()
      if G.GAME.selected_back.name == 'Plasma Deck' then
+        -- CAUTION: Modifying DV.SIM.running directly! Special care must be taken wrt. Talisman,
+        -- because we are assuming that DV.SIM.running deals with primitive numbers only!
+
         local function plasma(data)
            local sum = data.chips + data.mult
            local half_sum = math.floor(sum/2)

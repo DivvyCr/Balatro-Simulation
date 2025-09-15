@@ -74,9 +74,10 @@ if not DV.SIM.JOKERS.add_suit_mult then
         max_value = exact_value
      end
 
-     DV.SIM.running.min[field]   = mod_func(adj_func(DV.SIM.running.min[field],   min_value))
-     DV.SIM.running.exact[field] = mod_func(adj_func(DV.SIM.running.exact[field], exact_value))
-     DV.SIM.running.max[field]   = mod_func(adj_func(DV.SIM.running.max[field],   max_value))
+     -- NOTE: We should have the invariant that DV.SIM.running only contains primitive numbers!
+     DV.SIM.running.min[field]   = mod_func(adj_func(DV.SIM.running.min[field],   DV.SIM.to_number(min_value)))
+     DV.SIM.running.exact[field] = mod_func(adj_func(DV.SIM.running.exact[field], DV.SIM.to_number(exact_value)))
+     DV.SIM.running.max[field]   = mod_func(adj_func(DV.SIM.running.max[field],   DV.SIM.to_number(max_value)))
   end
 
   function DV.SIM.add_chips(exact, min, max)
@@ -112,6 +113,19 @@ if not DV.SIM.JOKERS.add_suit_mult then
   function DV.SIM.mod_mult(x)
      return x
   end
+
+  -- The following is necessary for custom handling of Talisman.
+  -- Specifically, we currently do not want to deal with Talisman's big numbers,
+  -- so this function should be used to convert them to primitive numbers.
+  function DV.SIM.to_number(x)
+     -- NOTE: Check via (getmetatable(x) == BigMeta/OmegaMeta) is faulty.
+     -- Therefore, it is easiest to check whether the to_number function (assumed) exists:
+     if type(x) == 'table' and x.to_number then
+        return x:to_number()
+     else
+        return x
+     end
+   end
 
   --
   -- LOW-LEVEL:
