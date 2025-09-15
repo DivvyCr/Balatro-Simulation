@@ -80,15 +80,15 @@ if not DV.SIM.JOKERS.add_suit_mult then
   end
 
   function DV.SIM.add_chips(exact, min, max)
-     DV.SIM.adjust_field_with_range(function(x, y) return x + y end, "chips", mod_chips, exact, min, max)
+     DV.SIM.adjust_field_with_range(function(x, y) return x + y end, "chips", DV.SIM.mod_chips, exact, min, max)
   end
 
   function DV.SIM.add_mult(exact, min, max)
-     DV.SIM.adjust_field_with_range(function(x, y) return x + y end, "mult", mod_mult, exact, min, max)
+     DV.SIM.adjust_field_with_range(function(x, y) return x + y end, "mult", DV.SIM.mod_mult, exact, min, max)
   end
 
   function DV.SIM.x_mult(exact, min, max)
-     DV.SIM.adjust_field_with_range(function(x, y) return x * y end, "mult", mod_mult, exact, min, max)
+     DV.SIM.adjust_field_with_range(function(x, y) return x * y end, "mult", DV.SIM.mod_mult, exact, min, max)
   end
 
   function DV.SIM.add_dollars(exact, min, max)
@@ -98,6 +98,19 @@ if not DV.SIM.JOKERS.add_suit_mult then
 
   function DV.SIM.add_reps(n)
      DV.SIM.running.reps = DV.SIM.running.reps + n
+  end
+
+  -- The following has to be duplicated because SMODS modifies the original with side-effects:
+  function DV.SIM.mod_chips(x)
+     if G.GAME.modifiers.chips_dollar_cap then
+        x = math.min(x, math.max(G.GAME.dollars, 0))
+     end
+     return x
+  end
+
+  -- The following is duplicated mostly for consistency with the above:
+  function DV.SIM.mod_mult(x)
+     return x
   end
 
   --

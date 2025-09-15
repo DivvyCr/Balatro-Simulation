@@ -238,8 +238,8 @@ if not DV.SIM.run then
         local function flint(data)
            local half_chips = math.floor(data.chips/2 + 0.5)
            local half_mult = math.floor(data.mult/2 + 0.5)
-           data.chips = mod_chips(math.max(half_chips, 0))
-           data.mult  = mod_mult(math.max(half_mult, 1))
+           data.chips = DV.SIM.mod_chips(math.max(half_chips, 0))
+           data.mult  = DV.SIM.mod_mult(math.max(half_mult, 1))
         end
 
         flint(DV.SIM.running.min)
@@ -255,8 +255,8 @@ if not DV.SIM.run then
         local function plasma(data)
            local sum = data.chips + data.mult
            local half_sum = math.floor(sum/2)
-           data.chips = mod_chips(half_sum)
-           data.mult = mod_mult(half_sum)
+           data.chips = DV.SIM.mod_chips(half_sum)
+           data.mult  = DV.SIM.mod_mult(half_sum)
         end
 
         plasma(DV.SIM.running.min)
