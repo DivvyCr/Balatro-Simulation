@@ -196,7 +196,7 @@ if not DV.SIM.JOKERS.add_suit_mult then
         x_mult = center.config.Xmult or 1,
         h_size = center.config.h_size or 0,
         d_size = center.config.d_size or 0,
-        extra = copy_table(center.config.extra) or nil,
+        extra = DV.SIM.deep_copy(center.config.extra) or nil,
         extra_value = 0,
         type = center.config.type or '',
         order = center.order or nil,
@@ -227,6 +227,89 @@ if not DV.SIM.JOKERS.add_suit_mult then
         card_data.edition.type = 'polychrome'
      elseif edition.negative then
         -- TODO
+     end
+  end
+
+  --
+  -- MISC:
+  --
+
+  -- This recursively copies and returns SOURCE.
+  -- Note that this is an improvement over the game's copy_table, which can't handle circular references.
+  function DV.SIM.deep_copy(source)
+     local seen = {}
+
+     local function deep_copy_rec(obj)
+        if type(obj) ~= 'table' then return obj end
+
+        -- This avoids infinite loops in case a table contains a reference to itself:
+        if seen[obj] then return seen[obj] end
+
+        local copy = {}
+
+        seen[obj] = copy
+
+        for k, v in pairs(obj) do
+           copy[deep_copy_rec(k)] = deep_copy_rec(v)
+        end
+
+        return setmetatable(copy, deep_copy_rec(getmetatable(obj)))
+     end
+
+     return deep_copy_rec(source)
+  end
+
+  -- This recursively updates TARGET in-place to match the structure of SOURCE;
+  -- if any value in TARGET was copied somewhere by reference, then the copy will see the update, too.
+  -- This is in contrast to reassigning a variable to a deep copy which clobbers all references.
+  function DV.SIM.deep_update(target, source)
+     if type(target) ~= 'table' or type(source) ~= 'table' then return end
+
+     --
+     -- If a key-value pair is not in SOURCE, then that key shouldn't be in TARGET:
+     --
+
+     for k, _ in pairs(target) do
+        if source[k] == nil then
+           target[k] = nil
+        end
+     end
+
+     --
+     -- Recursively update key-value pairs in TARGET to match those in SOURCE:
+     --
+
+     for k, source_value in pairs(source) do
+        local target_value = target[k]
+
+        if type(source_value) == 'table' and type(target_value) == 'table' then
+           DV.SIM.deep_update(target_value, source_value)
+        else
+           -- Note that DV.SIM.deep_copy(...) handles non-table data by returning it directly
+           -- CAUTION: If target is a table, then this will clobber its reference, so if anything copied it by reference then there might be desync issues...
+           target[k] = DV.SIM.deep_copy(source_value)
+        end
+     end
+
+     --
+     -- Recursively update TARGET to match SOURCE wrt. metatables:
+     --
+
+     local mt_target = getmetatable(target)
+     local mt_source = getmetatable(source)
+
+     if mt_source then
+        if mt_target then
+           -- Both are metatables, so recursively update:
+           DV.SIM.deep_update(mt_target, mt_source)
+        else
+           -- Target is NOT a metatable, so update it:
+           setmetatable(target, DV.SIM.deep_copy(mt_source))
+        end
+     elseif mt_target then
+        -- Source is NOT a metatable, so ensure TARGET is not, too:
+        -- CAUTION: This clobbers target metatable's reference, so if anything copied it by reference then there might be desync issues...
+        setmetatable(target, nil)
      end
   end
 

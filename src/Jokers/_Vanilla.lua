@@ -295,7 +295,7 @@ if not DVSJ.simulate_joker then
   DVSJ.simulate_dna = function(joker_obj, context)
      if context.cardarea == G.jokers and context.before then
         if G.GAME.current_round.hands_played == 0 and #context.full_hand == 1 then
-           local new_card = copy_table(context.full_hand[1])
+           local new_card = DV.SIM.deep_copy(context.full_hand[1])
            table.insert(DV.SIM.env.held_cards, new_card)
         end
      end

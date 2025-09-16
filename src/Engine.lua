@@ -85,8 +85,8 @@ if not DV.SIM.run then
         local joker_data = {
            -- P_CENTER keys for jokers have the form j_NAME, get rid of j_
            id = joker.config.center.key:sub(3, #joker.config.center.key),
-           ability = copy_table(joker.ability),
-           edition = copy_table(joker.edition),
+           ability = DV.SIM.deep_copy(joker.ability),
+           edition = DV.SIM.deep_copy(joker.edition),
            rarity = joker.config.center.rarity,
            debuff = joker.debuff
         }
@@ -99,7 +99,7 @@ if not DV.SIM.run then
         local consumable_data = {
            -- P_CENTER keys have the form x_NAME, get rid of x_
            id = consumable.config.center.key:sub(3, #consumable.config.center.key),
-           ability = copy_table(consumable.ability)
+           ability = DV.SIM.deep_copy(consumable.ability)
         }
         table.insert(DV.SIM.env.consumables, consumable_data)
      end
@@ -127,8 +127,8 @@ if not DV.SIM.run then
         rank = card_obj.base.id,
         suit = card_obj.base.suit,
         base_chips = card_obj.base.nominal,
-        ability = copy_table(card_obj.ability),
-        edition = copy_table(card_obj.edition),
+        ability = DV.SIM.deep_copy(card_obj.ability),
+        edition = DV.SIM.deep_copy(card_obj.edition),
         seal = card_obj.seal,
         debuff = card_obj.debuff,
         lucky_trigger = {}
@@ -141,6 +141,13 @@ if not DV.SIM.run then
      local min_score   = math.floor(DVSR.min.chips   * DVSR.min.mult)
      local exact_score = math.floor(DVSR.exact.chips * DVSR.exact.mult)
      local max_score   = math.floor(DVSR.max.chips   * DVSR.max.mult)
+
+     if
+        type(min_score) == "table" or type(exact_score) == "table" or type(max_score) == "table" or
+        type(DVSR.min.dollars) == "table" or type(DVSR.exact.dollars) == "table" or type(DVSR.max.dollars) == "table"
+     then
+        error("BOOM!")
+     end
 
      return {
         score   = {min = min_score,        exact = exact_score,        max = max_score},
@@ -156,14 +163,14 @@ if not DV.SIM.run then
      local DVSO = DV.SIM.orig
 
      if save_or_restore == "SAVE" then
-        DVSO.random_data = copy_table(G.GAME.pseudorandom)
-        DVSO.hand_data = copy_table(G.GAME.hands)
+        DVSO.random_data = DV.SIM.deep_copy(G.GAME.pseudorandom)
+        DVSO.hand_data   = DV.SIM.deep_copy(G.GAME.hands)
         return
      end
 
      if save_or_restore == "RESTORE" then
-        G.GAME.pseudorandom = DVSO.random_data
-        G.GAME.hands = DVSO.hand_data
+        DV.SIM.deep_update(G.GAME.pseudorandom, DVSO.random_data)
+        DV.SIM.deep_update(G.GAME.hands,        DVSO.hand_data)
         return
      end
   end
